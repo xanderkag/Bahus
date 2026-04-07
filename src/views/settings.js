@@ -8,46 +8,11 @@ export function renderSettings(state) {
       <article class="panel">
         <div class="panel-header">
           <div>
-            <h2>Настройки</h2>
-            <p>Единое место для оформления интерфейса, пользователей и рабочих параметров проекта.</p>
-          </div>
-        </div>
-        <div class="feature-grid settings-grid">
-          <div class="feature-card">
-            <h3>Тема интерфейса</h3>
-            <p>Переключение между рабочей тёмной и светлой темой для менеджера.</p>
-            <div class="segmented-control settings-theme-switch" role="tablist" aria-label="Тема интерфейса">
-              <button type="button" class="segmented-option ${theme === "dark" ? "is-active" : ""}" data-action="setTheme" data-theme="dark">Тёмная тема</button>
-              <button type="button" class="segmented-option ${theme === "light" ? "is-active" : ""}" data-action="setTheme" data-theme="light">Светлая тема</button>
-            </div>
-            <div class="hint">Тема применяется ко всем экранам: импорт, позиции, КП и настройки.</div>
-          </div>
-          <div class="feature-card">
-            <h3>Интеграции</h3>
-            <p>Endpoint: <code class="settings-code">${escapeHtml(state.settings.workflow_endpoint)}</code></p>
-            <div class="hint">Сюда подключается обработка импорта, разбор файлов и дальнейший export flow.</div>
-          </div>
-          <div class="feature-card">
-            <h3>Каталог</h3>
-            <p>Источник: <code class="settings-code">${escapeHtml(state.settings.catalog_source)}</code></p>
-            <div class="hint">Позиции уже живут в общей таблице, поэтому каталог можно подмешивать без отдельного экрана.</div>
-          </div>
-          <div class="feature-card">
-            <h3>Экспорт</h3>
-            <p>Формат по умолчанию: <code class="settings-code">${escapeHtml(state.settings.export_format)}</code></p>
-            <div class="hint">Google авторизацию позже добавим сюда же, пока это подготовленный блок под дальнейшее подключение.</div>
-          </div>
-        </div>
-      </article>
-      <article class="panel">
-        <div class="panel-header">
-          <div>
             <h2>Пользователи</h2>
-            <p>Базовая таблица доступа для команды. Позже сюда подключим Google авторизацию и реальные роли.</p>
+            <p>Состав команды, роли и уровень доступа. Этого достаточно для текущего прототипа.</p>
           </div>
           <div class="toolbar-actions">
-            <span class="pill pill-accent">Google auth later</span>
-            <button class="ghost-btn" type="button">Добавить пользователя</button>
+            <button class="ghost-btn" type="button" data-action="addSettingsUser">Добавить пользователя</button>
           </div>
         </div>
         <div class="table-wrap">
@@ -58,8 +23,8 @@ export function renderSettings(state) {
                 <th>Email</th>
                 <th>Роль</th>
                 <th>Доступ</th>
-                <th>Авторизация</th>
                 <th>Статус</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -67,14 +32,35 @@ export function renderSettings(state) {
                 <tr>
                   <td><div class="table-title">${escapeHtml(user.name)}</div></td>
                   <td>${escapeHtml(user.email)}</td>
-                  <td>${escapeHtml(user.role)}</td>
-                  <td>${escapeHtml(user.scope)}</td>
-                  <td><span class="pill">${escapeHtml(user.auth)}</span></td>
-                  <td><span class="pill ${user.status === "Активен" ? "pill-good" : "pill-warn"}">${escapeHtml(user.status)}</span></td>
+                  <td><button class="ghost-btn compact-action-btn settings-user-chip" data-action="cycleSettingsUserRole" data-user-id="${user.id}">${escapeHtml(user.role)}</button></td>
+                  <td><button class="ghost-btn compact-action-btn settings-user-chip" data-action="cycleSettingsUserScope" data-user-id="${user.id}">${escapeHtml(user.scope)}</button></td>
+                  <td><button class="ghost-btn compact-action-btn settings-user-chip ${user.status === "Активен" ? "is-good" : "is-warn"}" data-action="toggleSettingsUserStatus" data-user-id="${user.id}">${escapeHtml(user.status)}</button></td>
+                  <td><div class="settings-user-actions"><button class="ghost-btn compact-action-btn" data-action="removeSettingsUser" data-user-id="${user.id}">Удалить</button></div></td>
                 </tr>
               `).join("")}
             </tbody>
           </table>
+        </div>
+      </article>
+      <article class="panel settings-theme-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Тема интерфейса</h2>
+            <p>Переключение между рабочей тёмной и светлой темой для всех экранов.</p>
+          </div>
+        </div>
+        <div class="settings-theme-block">
+          <div class="settings-theme-toggle" role="tablist" aria-label="Тема интерфейса">
+            <button type="button" class="settings-theme-option ${theme === "dark" ? "is-active" : ""}" data-action="setTheme" data-theme="dark">
+              <span class="settings-theme-dot"></span>
+              <span>Тёмная тема</span>
+            </button>
+            <button type="button" class="settings-theme-option ${theme === "light" ? "is-active" : ""}" data-action="setTheme" data-theme="light">
+              <span class="settings-theme-dot"></span>
+              <span>Светлая тема</span>
+            </button>
+          </div>
+          <div class="hint">Тема применяется ко всем экранам: импорт, позиции, КП и настройки.</div>
         </div>
       </article>
     </section>

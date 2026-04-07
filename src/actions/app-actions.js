@@ -546,6 +546,79 @@ export function createActions(store, backend = null) {
         },
       }));
     },
+    addSettingsUser() {
+      update((state) => {
+        const nextIndex = (state.settings.users?.length || 0) + 1;
+        return {
+          ...state,
+          settings: {
+            ...state.settings,
+            users: [
+              ...(state.settings.users || []),
+              {
+                id: `usr_${String(Date.now()).slice(-6)}`,
+                name: `Новый пользователь ${nextIndex}`,
+                email: `user${nextIndex}@bahus.local`,
+                role: "Менеджер",
+                scope: "Мои данные",
+                auth: "Google",
+                status: "Приглашён",
+              },
+            ],
+          },
+        };
+      });
+    },
+    removeSettingsUser({ userId }) {
+      update((state) => ({
+        ...state,
+        settings: {
+          ...state.settings,
+          users: (state.settings.users || []).filter((user) => user.id !== userId),
+        },
+      }));
+    },
+    cycleSettingsUserRole({ userId }) {
+      const roles = ["Администратор", "Менеджер", "Оператор"];
+      update((state) => ({
+        ...state,
+        settings: {
+          ...state.settings,
+          users: (state.settings.users || []).map((user) => {
+            if (user.id !== userId) return user;
+            const currentIndex = Math.max(roles.indexOf(user.role), 0);
+            return { ...user, role: roles[(currentIndex + 1) % roles.length] };
+          }),
+        },
+      }));
+    },
+    cycleSettingsUserScope({ userId }) {
+      const scopes = ["Все данные", "Мои данные", "Импорт и review"];
+      update((state) => ({
+        ...state,
+        settings: {
+          ...state.settings,
+          users: (state.settings.users || []).map((user) => {
+            if (user.id !== userId) return user;
+            const currentIndex = Math.max(scopes.indexOf(user.scope), 0);
+            return { ...user, scope: scopes[(currentIndex + 1) % scopes.length] };
+          }),
+        },
+      }));
+    },
+    toggleSettingsUserStatus({ userId }) {
+      update((state) => ({
+        ...state,
+        settings: {
+          ...state.settings,
+          users: (state.settings.users || []).map((user) =>
+            user.id !== userId
+              ? user
+              : { ...user, status: user.status === "Активен" ? "Приглашён" : "Активен" },
+          ),
+        },
+      }));
+    },
     selectImport({ importId }, value) {
       const nextImportId = importId || value;
       if (!nextImportId) return;

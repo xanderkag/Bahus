@@ -409,19 +409,24 @@ function renderQuoteTable(state) {
 function renderAlternativesTable(itemId, alternatives) {
   if (!alternatives.length) {
     return `
-      <div class="inline-card">
-        Подходящих альтернатив пока не найдено. В будущей интеграции сюда ляжет матчинг по ассортиментной базе.
+      <div class="inline-card quote-alternatives-card">
+        <div class="empty-block quote-alternatives-empty">
+          Подходящих альтернатив пока не найдено. Следующим шагом сюда можно будет подключить более точный ассортиментный match.
+        </div>
       </div>
     `;
   }
 
   return `
-    <div class="inline-card">
-      <div class="inline-card-header">
-        <strong>Альтернативные товары</strong>
-        <button class="ghost-btn" data-action="useBestAlternative" data-item-id="${itemId}">Подобрать лучший</button>
+    <div class="inline-card quote-alternatives-card">
+      <div class="inline-card-header quote-alternatives-header">
+        <div class="quote-alternatives-headline">
+          <strong>Альтернативные товары</strong>
+          <span class="table-subtitle">${alternatives.length} вариантов для быстрой замены позиции</span>
+        </div>
+        <button class="ghost-btn compact-action-btn" data-action="useBestAlternative" data-item-id="${itemId}">Выбрать лучший</button>
       </div>
-      <table class="nested-table">
+      <table class="nested-table quote-alternatives-table">
         <thead>
           <tr>
             <th>Наименование</th>
@@ -436,20 +441,25 @@ function renderAlternativesTable(itemId, alternatives) {
         <tbody>
           ${alternatives
             .map(
-              (alternative) => `
-                <tr>
+              (alternative, index) => `
+                <tr class="${index === 0 ? "is-best-alternative" : ""}">
                   <td>
                     <div class="table-title">${escapeHtml(alternative.raw_name)}</div>
-                    <div class="table-subtitle">${escapeHtml(alternative.importRecord.meta.source_file)}</div>
+                    <div class="table-subtitle">${escapeHtml(alternative.importRecord.meta.source_file)} · ${escapeHtml(alternative.country || "—")} · ${escapeHtml(alternative.category || "—")}</div>
                   </td>
                   <td>${escapeHtml(alternative.supplier?.name || "—")}</td>
                   <td>${formatNumber(alternative.volume_l)}</td>
                   <td>${formatMoney(alternative.purchase_price)}</td>
                   <td>${formatMoney(alternative.rrc_min)}</td>
-                  <td><span class="pill pill-accent">${alternative.score}</span></td>
                   <td>
-                    <button class="primary-btn" data-action="applyAlternative" data-item-id="${itemId}" data-alternative-id="${alternative.id}">
-                      Выбрать
+                    <div class="quote-alternative-match">
+                      <span class="pill pill-accent">${alternative.score >= 8 ? "Высокое" : alternative.score >= 6 ? "Хорошее" : "Базовое"}</span>
+                      <span class="hint">${alternative.score}/10</span>
+                    </div>
+                  </td>
+                  <td>
+                    <button class="${index === 0 ? "primary-btn" : "ghost-btn"} compact-action-btn" data-action="applyAlternative" data-item-id="${itemId}" data-alternative-id="${alternative.id}">
+                      ${index === 0 ? "Выбрать лучший" : "Выбрать"}
                     </button>
                   </td>
                 </tr>
@@ -617,6 +627,7 @@ export function renderQuote(state) {
               : ""
           }
         </div>
+        <div class="hint quote-items-hint">Для позиций КП сейчас важнее быстрые действия по строке и подбор аналогов. Полный слой фильтрации здесь пока не нужен и только перегрузит рабочий сценарий.</div>
         <div class="table-wrap">
           <table>
             ${renderQuoteColGroup(state)}

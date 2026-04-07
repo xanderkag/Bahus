@@ -86,6 +86,16 @@ export function getVisibleProducts(state) {
       const direction = state.ui.sort?.direction === "desc" ? -1 : 1;
 
       const getSortValue = (product) => {
+        const clientPrice =
+          typeof product.rrc_min === "number" ? product.rrc_min : product.purchase_price;
+        const marginRub =
+          typeof product.purchase_price === "number" && typeof clientPrice === "number"
+            ? clientPrice - product.purchase_price
+            : null;
+        const marginPct =
+          typeof marginRub === "number" && product.purchase_price
+            ? (marginRub / product.purchase_price) * 100
+            : null;
         switch (column) {
           case "name":
             return normalizeText(product.normalized_name || product.raw_name);
@@ -97,6 +107,18 @@ export function getVisibleProducts(state) {
             return normalizeText(product.category);
           case "promo":
             return product.promo ? 1 : 0;
+          case "volume_l":
+            return product.volume_l ?? -1;
+          case "purchase_price":
+            return product.purchase_price ?? -1;
+          case "rrc_min":
+            return product.rrc_min ?? -1;
+          case "client_price":
+            return clientPrice ?? -1;
+          case "margin_rub":
+            return marginRub ?? -1;
+          case "margin_pct":
+            return marginPct ?? -1;
           case "issues": {
             const summary = getRowIssueSummary(state, product.id);
             if (summary.kind === "bad") return 2;

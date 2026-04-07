@@ -299,10 +299,12 @@ function renderColumnHeader(label, column, activeColumnFilter) {
 function renderSortControls(column, sort) {
   const isAsc = sort?.column === column && sort?.direction === "asc";
   const isDesc = sort?.column === column && sort?.direction === "desc";
+  const numericColumns = new Set(["volume_l", "purchase_price", "rrc_min", "client_price", "margin_rub", "margin_pct"]);
+  const isNumeric = numericColumns.has(column);
   return `
     <div class="column-menu-sort">
-      <button class="ghost-btn compact-action-btn ${isAsc ? "is-active" : ""}" data-action="setTableSort" data-column="${column}" data-direction="asc">Сортировать A→Я</button>
-      <button class="ghost-btn compact-action-btn ${isDesc ? "is-active" : ""}" data-action="setTableSort" data-column="${column}" data-direction="desc">Сортировать Я→A</button>
+      <button class="ghost-btn compact-action-btn ${isAsc ? "is-active" : ""}" data-action="setTableSort" data-column="${column}" data-direction="asc">${isNumeric ? "Сначала меньше" : "От А до Я"}</button>
+      <button class="ghost-btn compact-action-btn ${isDesc ? "is-active" : ""}" data-action="setTableSort" data-column="${column}" data-direction="desc">${isNumeric ? "Сначала больше" : "От Я до А"}</button>
     </div>
   `;
 }
@@ -390,12 +392,51 @@ function renderColumnMenu(state, filterOptions, column) {
       ${renderChoiceList("review_status", categoricalOptions.review_status, state.ui.filters.review_status || [])}
       ${renderColumnMenuFooter("review_status")}
     `,
+    volume_l: `
+      ${renderSortControls(column, state.ui.sort)}
+      ${renderColumnMenuFooter("volume_l")}
+    `,
+    purchase_price: `
+      ${renderSortControls(column, state.ui.sort)}
+      ${renderColumnMenuFooter("purchase_price")}
+    `,
+    rrc_min: `
+      ${renderSortControls(column, state.ui.sort)}
+      ${renderColumnMenuFooter("rrc_min")}
+    `,
+    client_price: `
+      ${renderSortControls(column, state.ui.sort)}
+      ${renderColumnMenuFooter("client_price")}
+    `,
+    margin_rub: `
+      ${renderSortControls(column, state.ui.sort)}
+      ${renderColumnMenuFooter("margin_rub")}
+    `,
+    margin_pct: `
+      ${renderSortControls(column, state.ui.sort)}
+      ${renderColumnMenuFooter("margin_pct")}
+    `,
   };
 
   return `
     <div class="column-menu">
       <div class="column-menu-header">
-        <strong>${escapeHtml(column === "review_status" ? "Проверка" : column === "promo" ? "Акция" : column === "issues" ? "Проблемы" : column === "name" ? "Наименование" : column === "code" ? "Код" : column === "country" ? "Страна" : "Категория")}</strong>
+        <strong>${escapeHtml(
+          column === "review_status" ? "Проверка"
+            : column === "promo" ? "Акция"
+              : column === "issues" ? "Проблемы"
+                : column === "name" ? "Наименование"
+                  : column === "code" ? "Код"
+                    : column === "country" ? "Страна"
+                      : column === "category" ? "Категория"
+                        : column === "volume_l" ? "Объём"
+                          : column === "purchase_price" ? "Закупка"
+                            : column === "rrc_min" ? "РРЦ"
+                              : column === "client_price" ? "Цена клиенту"
+                                : column === "margin_rub" ? "Маржа"
+                                  : column === "margin_pct" ? "Маржа %"
+                                    : column
+        )}</strong>
         <button class="ghost-btn compact-action-btn icon-action-btn" data-action="toggleColumnFilter" data-column="${column}" aria-label="Закрыть фильтр">×</button>
       </div>
       ${contentByColumn[column] || ""}
@@ -638,7 +679,6 @@ function renderRowDetailModal(state) {
           </div>
         </div>
         <div class="row-detail-summary-wrap">
-          <div class="row-detail-section-label">Базовые параметры</div>
           <div class="row-detail-summary">
             <div class="compact-stat compact-stat-inline"><span>Код позиции</span><strong>${escapeHtml(formatValue(product.product_id || product.temp_id))}</strong></div>
             <div class="compact-stat compact-stat-inline"><span>Категория</span><strong>${escapeHtml(formatValue(product.category))}</strong></div>
@@ -648,13 +688,19 @@ function renderRowDetailModal(state) {
         </div>
         <div class="row-detail-shell">
           <section class="detail-card row-detail-main">
-            <h3>Что у позиции сейчас</h3>
+            <div class="row-detail-card-header">
+              <h3>Что у позиции сейчас</h3>
+              <p class="hint">Ключевые поля, которые уже извлечены из прайса и участвуют в review.</p>
+            </div>
             <div class="detail-properties-grid">
               ${renderDetailProperties(state, product, currentImport)}
             </div>
           </section>
           <section class="detail-card row-detail-side">
-            <h3>Фото и карточка товара</h3>
+            <div class="row-detail-card-header">
+              <h3>Фото и карточка товара</h3>
+              <p class="hint">Будут подтягиваться после сопоставления с каталогом или ручной загрузки.</p>
+            </div>
             <div class="detail-photo-grid">
               ${renderPhotoGallery(product)}
             </div>
@@ -676,11 +722,14 @@ function renderRowDetailModal(state) {
                     </div>
                   </div>
                 `
-                : '<div class="empty-block">Карточка каталога появится после сопоставления. Сюда же можно будет подтянуть фото, атрибуты и описание.</div>'
+                : '<div class="empty-block row-detail-empty">Карточка каталога появится после сопоставления. Сюда же можно будет подтянуть фото, атрибуты и описание.</div>'
             }
           </section>
           <section class="detail-card">
-            <h3>Ошибки и замечания разбора</h3>
+            <div class="row-detail-card-header">
+              <h3>Ошибки и замечания разбора</h3>
+              <p class="hint">Здесь видно, что потребует ручной проверки перед добавлением позиции в КП.</p>
+            </div>
             <div class="detail-list">
               ${
                 issues.length
@@ -702,12 +751,15 @@ function renderRowDetailModal(state) {
                         `,
                       )
                       .join("")
-                  : '<div class="empty-block">У этой строки нет ошибок парсинга. Можно переходить к проверке и добавлению в КП.</div>'
+                  : '<div class="empty-block row-detail-empty">У этой строки нет ошибок парсинга. Можно переходить к проверке и добавлению в КП.</div>'
               }
             </div>
           </section>
           <section class="detail-card">
-            <h3>Ручная корректировка</h3>
+            <div class="row-detail-card-header">
+              <h3>Ручная корректировка</h3>
+              <p class="hint">Используйте только для спорных строк, которые не удалось разобрать автоматически.</p>
+            </div>
             <div class="future-stack">
               <div class="form-stack">
                 <label class="field-label">Нормализованное имя</label>
@@ -763,11 +815,11 @@ function renderJobsPanel(state) {
   if (state.runtime?.dataSource !== "local-api") return "";
 
   return `
-    <article class="panel">
+    <article class="panel jobs-panel">
       <div class="panel-header">
         <div>
           <h2>Фоновые операции</h2>
-          <p>Заготовка под автоматизацию этапов разбора, нормализации, сопоставления и выгрузки.</p>
+          <p>Служебный блок для этапов разбора, нормализации, сопоставления и выгрузки.</p>
         </div>
         <button class="ghost-btn" data-action="refreshRemoteData">Обновить операции</button>
       </div>
@@ -775,13 +827,13 @@ function renderJobsPanel(state) {
         <span class="pill">Статус API: ${escapeHtml(formatValue(resource?.status || "idle"))}</span>
         ${resource?.error ? `<span class="pill pill-bad">${escapeHtml(resource.error)}</span>` : ""}
       </div>
-      <div class="toolbar-actions" style="margin-top:12px;">
+      <div class="toolbar-actions jobs-actions" style="margin-top:12px;">
         <button class="ghost-btn" data-action="triggerJob" data-job-type="parse" data-target="${escapeHtml(state.ui.selectedImportId)}">Запустить разбор</button>
         <button class="ghost-btn" data-action="triggerJob" data-job-type="normalize" data-target="${escapeHtml(state.ui.selectedImportId)}">Запустить нормализацию</button>
         <button class="ghost-btn" data-action="triggerJob" data-job-type="match" data-target="${escapeHtml(state.ui.selectedImportId)}">Запустить сопоставление</button>
         <button class="ghost-btn" data-action="triggerJob" data-job-type="export_quote" data-target="quote_draft">Запустить выгрузку</button>
       </div>
-      <div class="table-wrap">
+      <div class="table-wrap jobs-table-wrap">
         <table>
           <thead>
             <tr>
@@ -923,12 +975,12 @@ export function renderOverview(state) {
                 <th class="filterable-th">${renderColumnHeader("Код", "code", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "code")}</th>
                 <th class="filterable-th">${renderColumnHeader("Страна", "country", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "country")}</th>
                 <th class="filterable-th">${renderColumnHeader("Категория", "category", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "category")}</th>
-                <th>Объём</th>
-                <th>Закупка</th>
-                <th>РРЦ</th>
-                <th>Цена клиенту</th>
-                <th>Маржа</th>
-                <th>Маржа %</th>
+                <th class="filterable-th">${renderColumnHeader("Объём", "volume_l", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "volume_l")}</th>
+                <th class="filterable-th">${renderColumnHeader("Закупка", "purchase_price", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "purchase_price")}</th>
+                <th class="filterable-th">${renderColumnHeader("РРЦ", "rrc_min", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "rrc_min")}</th>
+                <th class="filterable-th">${renderColumnHeader("Цена клиенту", "client_price", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "client_price")}</th>
+                <th class="filterable-th">${renderColumnHeader("Маржа", "margin_rub", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "margin_rub")}</th>
+                <th class="filterable-th">${renderColumnHeader("Маржа %", "margin_pct", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "margin_pct")}</th>
                 <th class="filterable-th">${renderColumnHeader("Акция", "promo", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "promo")}</th>
                 <th class="filterable-th">${renderColumnHeader("Проблемы", "issues", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "issues")}</th>
                 <th class="filterable-th">${renderColumnHeader("Проверка", "review_status", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "review_status")}</th>

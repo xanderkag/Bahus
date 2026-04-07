@@ -51,10 +51,12 @@ function renderColumnHeader(label, column, activeColumnFilter) {
 function renderSortControls(column, sort) {
   const isAsc = sort?.column === column && sort?.direction === "asc";
   const isDesc = sort?.column === column && sort?.direction === "desc";
+  const numericColumns = new Set(["volume_l", "purchase_price", "rrc_min"]);
+  const isNumeric = numericColumns.has(column);
   return `
     <div class="column-menu-sort">
-      <button class="ghost-btn compact-action-btn ${isAsc ? "is-active" : ""}" data-action="setTableSort" data-column="${column}" data-direction="asc">Сортировать A→Я</button>
-      <button class="ghost-btn compact-action-btn ${isDesc ? "is-active" : ""}" data-action="setTableSort" data-column="${column}" data-direction="desc">Сортировать Я→A</button>
+      <button class="ghost-btn compact-action-btn ${isAsc ? "is-active" : ""}" data-action="setTableSort" data-column="${column}" data-direction="asc">${isNumeric ? "Сначала меньше" : "От А до Я"}</button>
+      <button class="ghost-btn compact-action-btn ${isDesc ? "is-active" : ""}" data-action="setTableSort" data-column="${column}" data-direction="desc">${isNumeric ? "Сначала больше" : "От Я до А"}</button>
     </div>
   `;
 }
@@ -142,6 +144,18 @@ function renderColumnMenu(state, filterOptions, column) {
       ${renderChoiceList("review_status", categoricalOptions.review_status, state.ui.filters.review_status || [])}
       ${renderColumnMenuFooter("review_status")}
     `,
+    volume_l: `
+      ${renderSortControls(column, state.ui.sort)}
+      ${renderColumnMenuFooter("volume_l")}
+    `,
+    purchase_price: `
+      ${renderSortControls(column, state.ui.sort)}
+      ${renderColumnMenuFooter("purchase_price")}
+    `,
+    rrc_min: `
+      ${renderSortControls(column, state.ui.sort)}
+      ${renderColumnMenuFooter("rrc_min")}
+    `,
   };
 
   return `
@@ -190,6 +204,45 @@ export function renderItems(state) {
     if (selectedIssues.size && !selectedIssues.has(issueToken)) return false;
 
     return true;
+  }).sort((left, right) => {
+    const column = state.ui.sort?.column || "row_index";
+    const direction = state.ui.sort?.direction === "desc" ? -1 : 1;
+    const normalize = (value) => String(value || "").toLowerCase();
+    const getValue = (product) => {
+      switch (column) {
+        case "name":
+          return normalize(product.normalized_name || product.raw_name);
+        case "code":
+          return normalize(product.product_id || product.temp_id || product.ids?.internal_code);
+        case "country":
+          return normalize(product.country);
+        case "category":
+          return normalize(product.category);
+        case "promo":
+          return product.promo ? 1 : 0;
+        case "volume_l":
+          return product.volume_l ?? -1;
+        case "purchase_price":
+          return product.purchase_price ?? -1;
+        case "rrc_min":
+          return product.rrc_min ?? -1;
+        case "issues": {
+          const issue = getRowIssueSummary(state, product.id);
+          if (issue.kind === "bad") return 2;
+          if (issue.kind === "warn") return 1;
+          return 0;
+        }
+        case "review_status":
+          return normalize(product.review_status);
+        default:
+          return product.row_index || 0;
+      }
+    };
+    const leftValue = getValue(left);
+    const rightValue = getValue(right);
+    if (leftValue < rightValue) return -1 * direction;
+    if (leftValue > rightValue) return 1 * direction;
+    return 0;
   });
 
   const selectedRows = new Set(state.ui.selectedRowIds || []);
@@ -231,9 +284,9 @@ export function renderItems(state) {
                 <th class="filterable-th">${renderColumnHeader("Страна", "country", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "country")}</th>
                 <th class="filterable-th">${renderColumnHeader("Категория", "category", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "category")}</th>
                 <th>Тип</th>
-                <th>Объём</th>
-                <th>Закупка</th>
-                <th>RRC</th>
+                <th class="filterable-th">${renderColumnHeader("Объём", "volume_l", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "volume_l")}</th>
+                <th class="filterable-th">${renderColumnHeader("Закупка", "purchase_price", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "purchase_price")}</th>
+                <th class="filterable-th">${renderColumnHeader("RRC", "rrc_min", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "rrc_min")}</th>
                 <th class="filterable-th">${renderColumnHeader("Акция", "promo", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "promo")}</th>
                 <th class="filterable-th">${renderColumnHeader("Проблемы", "issues", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "issues")}</th>
                 <th class="filterable-th">${renderColumnHeader("Проверка", "review_status", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "review_status")}</th>
