@@ -1,0 +1,37 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--text);
+  background: var(--body-bg);
+  font-family: "Segoe UI", "SF Pro Display", "Arial", sans-serif;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+pre,
+code {
+  font-family: "SFMono-Regular", "Consolas", monospace;
+}

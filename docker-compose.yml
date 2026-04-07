@@ -1,0 +1,53 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: bakhus-postgres
+    environment:
+      POSTGRES_DB: bakhus
+      POSTGRES_USER: bakhus
+      POSTGRES_PASSWORD: bakhus
+    ports:
+      - "5432:5432"
+    volumes:
+      - bakhus-postgres-data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bakhus -d bakhus"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  adminer:
+    image: adminer:4
+    container_name: bakhus-adminer
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    container_name: bakhus-frontend
+    ports:
+      - "4173:80"
+    depends_on:
+      - mock-api
+
+  mock-api:
+    build:
+      context: .
+      dockerfile: docker/mock-api.Dockerfile
+    container_name: bakhus-mock-api
+    environment:
+      MOCK_API_HOST: 0.0.0.0
+      MOCK_API_PORT: 8079
+    ports:
+      - "8079:8079"
+
+volumes:
+  bakhus-postgres-data:

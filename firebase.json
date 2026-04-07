@@ -1,0 +1,45 @@
+{
+  "hosting": {
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      ".firebaserc",
+      "**/.*",
+      "**/node_modules/**",
+      "docker/**",
+      "db/**",
+      "docs/**",
+      "scripts/**",
+      "requirements-backend.txt",
+      "docker-compose.yml",
+      "Makefile",
+      "*.code-workspace",
+      "bakhus_assistant_kp_update.html",
+      "price_import_review_ui_html_mock.html"
+    ],
+    "rewrites": [
+      {
+        "source": "/api/**",
+        "run": {
+          "serviceId": "bahus-api",
+          "region": "europe-west1"
+        }
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ],
+    "headers": [
+      {
+        "source": "**/*.@(js|css)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public,max-age=300"
+          }
+        ]
+      }
+    ]
+  }
+}

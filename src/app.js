@@ -1,0 +1,164 @@
+import { createActions } from "./actions/app-actions.js";
+import { createDemoState } from "./data/demo-data.js";
+import { loadStateFromApi } from "./services/api.js";
+import { createBackend } from "./services/backend.js";
+import { getBootstrapConfig, getStoredSidebarCollapsed, getStoredTheme, persistDataSource } from "./services/config.js";
+import { createStore } from "./state/store.js";
+import { createAppEventHandlers } from "./utils/dom.js";
+import { renderLayout } from "./views/layout.js";
+
+const root = document.getElementById("app");
+const IMPORT_STATUS_POLL_MS = 3000;
+
+function attachQuoteColumnResize(rootElement, store, actions) {
+  rootElement.addEventListener("mousedown", (event) => {
+    const handle = event.target.closest("[data-resize-column]");
+    if (!handle) return;
+
+    event.preventDefault();
+    const { resizeColumn: columnKey, minWidth } = handle.dataset;
+    const headerCell = handle.closest("th");
+    const startX = event.clientX;
+    const startWidth =
+      store.getState().ui.quoteTableColumns?.[columnKey] ||
+      headerCell?.getBoundingClientRect().width ||
+      Number(minWidth) ||
+      80;
+
+    function onMouseMove(moveEvent) {
+      const width = startWidth + (moveEvent.clientX - startX);
+      actions.setQuoteColumnWidth({ columnKey }, Math.max(Number(minWidth) || 64, width));
+    }
+
+    function onMouseUp() {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    }
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+  });
+}
+
+function renderBootMessage(title, message) {
+  root.innerHTML = `
+    <div style="min-height:100vh;display:grid;place-items:center;padding:24px;">
+      <div style="max-width:680px;width:100%;padding:24px;border:1px solid rgba(86,113,166,.24);border-radius:24px;background:rgba(12,21,39,.92);box-shadow:0 22px 50px rgba(2,8,23,.42);color:#ebf1ff;">
+        <div style="font-size:12px;color:#92a4ca;margin-bottom:10px;">Bakhus Assistant bootstrap</div>
+        <h1 style="margin:0 0 10px;font-size:28px;">${title}</h1>
+        <p style="margin:0;color:#92a4ca;line-height:1.5;">${message}</p>
+      </div>
+    </div>
+  `;
+}
+
+async function bootstrapState() {
+  const config = getBootstrapConfig();
+
+  if (config.requestedSource === "demo") {
+    persistDataSource("demo");
+    return createDemoState();
+  }
+
+  try {
+    const apiState = await loadStateFromApi(config.apiBaseUrl);
+    apiState.runtime.apiBaseUrl = config.apiBaseUrl;
+    persistDataSource("local-api");
+    return apiState;
+  } catch (error) {
+    const fallback = createDemoState();
+    fallback.runtime = {
+      dataSource: "demo",
+      dataSourceLabel: "embedded demo",
+      bootstrapMode: config.requestedSource === "local-api" ? "api-fallback" : "auto-fallback",
+      bootstrapError: error.message,
+    };
+    persistDataSource("demo");
+    return fallback;
+  }
+}
+
+async function main() {
+  renderBootMessage("Загрузка workspace", "Пробуем поднять состояние из локального API. Если API недоступен, интерфейс автоматически переключится на встроенный demo режим.");
+  const config = getBootstrapConfig();
+  const initialState = await bootstrapState();
+  initialState.ui = {
+    ...initialState.ui,
+    sidebarCollapsed: getStoredSidebarCollapsed(),
+  };
+  initialState.settings = {
+    ...initialState.settings,
+    theme: getStoredTheme(),
+  };
+  const store = createStore(initialState);
+  const backend =
+    initialState.runtime?.dataSource === "local-api"
+      ? createBackend(initialState.runtime.apiBaseUrl || config.apiBaseUrl)
+      : null;
+  const actions = createActions(store, backend);
+  const handlers = createAppEventHandlers(actions);
+  let importStatusPollId = null;
+  let pollingInFlight = false;
+
+  function stopImportStatusPolling() {
+    if (importStatusPollId) {
+      window.clearInterval(importStatusPollId);
+      importStatusPollId = null;
+    }
+  }
+
+  function shouldPollImportStatus(state) {
+    if (state.runtime?.dataSource !== "local-api") return false;
+    if (state.ui.activeView !== "overview") return false;
+    const importId = state.ui.selectedImportId;
+    if (!importId) return false;
+    const status = state.entities.importsById[importId]?.status;
+    return ["uploaded", "queued", "pending"].includes(status);
+  }
+
+  function syncImportStatusPolling(state) {
+    if (!shouldPollImportStatus(state)) {
+      stopImportStatusPolling();
+      return;
+    }
+    if (importStatusPollId) return;
+    importStatusPollId = window.setInterval(async () => {
+      if (pollingInFlight) return;
+      pollingInFlight = true;
+      try {
+        await actions.refreshSelectedImportStatus();
+      } finally {
+        pollingInFlight = false;
+      }
+    }, IMPORT_STATUS_POLL_MS);
+  }
+
+  function render() {
+    document.documentElement.dataset.theme = store.getState().settings?.theme || "dark";
+    root.innerHTML = renderLayout(store.getState());
+  }
+
+  root.addEventListener("click", handlers.click);
+  root.addEventListener("click", (event) => {
+    if (!event.target.closest(".client-picker") && store.getState().ui.clientPickerOpen) {
+      actions.closeClientPicker();
+    }
+  });
+  root.addEventListener("input", handlers.input);
+  root.addEventListener("change", handlers.change);
+  attachQuoteColumnResize(root, store, actions);
+
+  store.subscribe((state) => {
+    render();
+    syncImportStatusPolling(state);
+  });
+  render();
+  if (initialState.runtime?.dataSource === "local-api") {
+    void actions.refreshRemoteData();
+  }
+  syncImportStatusPolling(store.getState());
+}
+
+main().catch((error) => {
+  renderBootMessage("Ошибка запуска", `Не удалось инициализировать приложение: ${error.message}`);
+});
