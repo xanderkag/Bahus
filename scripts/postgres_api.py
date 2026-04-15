@@ -1179,7 +1179,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                     for i, item in enumerate(rows):
                         conn.execute(
                             """
-                            insert into quote_item (quote_document_id, line_no, raw_name, volume_l, purchase_price, rrc_min, sale_price, qty)
+                            insert into quote_item (quote_document_id, line_no, name_snapshot, volume_l, purchase_price, rrc_min, sale_price, qty)
                             values (%s, %s, %s, %s, %s, %s, %s, %s)
                             """,
                             (
@@ -1295,7 +1295,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             '''
             select
               id as source_product_id,
-              raw_name as name,
+              name_snapshot as name,
               volume_l,
               purchase_price,
               rrc_min,
@@ -1318,8 +1318,8 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 "clientId": str(row["client_id"]) if row["client_id"] else "",
                 "quoteNumber": row["quote_number"],
                 "quoteDate": str(row["quote_date"]) if row["quote_date"] else "",
-                "requestTitle": row["request_title"] or "",
-                "note": row["manager_note"] or "",
+                "requestTitle": "",
+                "note": row["note"] or "",
                 "mode": row["mode"],
                 "aiProcessingStatus": "done",
             },
@@ -1331,7 +1331,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             rows = conn.execute(
                 '''
                 select
-                  id, client_id, quote_number, quote_date, mode, status, manager_note, request_title
+                  id, client_id, quote_number, quote_date, mode, status, note
                 from quote_document
                 order by created_at desc
                 limit 100
@@ -1351,7 +1351,8 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
     def handle_create_quote(self) -> None:
         payload = self.read_json_body()
         client_id = payload.get("meta", {}).get("clientId")
-        request_title = payload.get("meta", {}).get("requestTitle", "")
+        client_id = client_id if client_id else None
+        
         note = payload.get("meta", {}).get("note", "")
         
         from datetime import datetime
@@ -1361,11 +1362,11 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             
             row = conn.execute(
                 '''
-                insert into quote_document (client_id, quote_number, quote_date, request_title, manager_note)
-                values (NULLIF(%s, ''), %s, CURRENT_DATE, %s, %s)
+                insert into quote_document (client_id, quote_number, quote_date, note)
+                values (%s, %s, CURRENT_DATE, %s)
                 returning *
                 ''',
-                (client_id, quote_number, request_title, note)
+                (client_id, quote_number, note)
             ).fetchone()
             quote = self.serialize_quote(conn, row)
             
@@ -1385,7 +1386,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             for i, item in enumerate(items):
                 conn.execute(
                     '''
-                    insert into quote_item (quote_document_id, line_no, raw_name, volume_l, purchase_price, rrc_min, sale_price, qty)
+                    insert into quote_item (quote_document_id, line_no, name_snapshot, volume_l, purchase_price, rrc_min, sale_price, qty)
                     values (%s, %s, %s, %s, %s, %s, %s, %s)
                     ''',
                     (
