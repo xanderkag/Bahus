@@ -91,5 +91,20 @@ export function createBackend(apiBaseUrl) {
         body: JSON.stringify(payload),
       });
     },
+    loadQuotes() {
+      return fetchJson(`${apiBaseUrl}/quotes`);
+    },
+    createQuote(payload) {
+      return fetchJson(`${apiBaseUrl}/quotes`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
+    saveQuote(quoteId, payload) {
+      return fetchJson(`${apiBaseUrl}/quotes/${encodeURIComponent(quoteId)}`, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+    },
   };
 }

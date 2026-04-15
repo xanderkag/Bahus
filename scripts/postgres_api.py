@@ -170,8 +170,31 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         if route == "/api/quote-draft":
             return self.handle_get_quote_draft()
 
+        if route == "/api/quotes":
+            return self.handle_list_quotes()
+        if route.startswith("/api/quotes/") and len(route.split("/")) == 4:
+            return self.handle_get_quote(route.split("/")[3])
+
         return self.respond_json({"error": "Not found", "path": route}, status=HTTPStatus.NOT_FOUND)
 
+    def do_PUT(self) -> None:  # noqa: N802
+        try:
+            self._do_PUT_internal()
+        except Exception:
+            logger.error(f"Error handling PUT {self.path}:\n{traceback.format_exc()}")
+            self.respond_json(
+                {"error": "Internal Server Error", "detail": traceback.format_exc()},
+                status=HTTPStatus.INTERNAL_SERVER_ERROR
+            )
+
+    def _do_PUT_internal(self) -> None:
+        parsed = urlparse(self.path)
+        route = parsed.path
+
+        if route.startswith("/api/quotes/") and len(route.split("/")) == 4:
+            return self.handle_update_quote(route.split("/")[3])
+
+        return self.respond_json({"error": "Not found", "path": route}, status=HTTPStatus.NOT_FOUND)
     def do_POST(self) -> None:  # noqa: N802
         try:
             self._do_POST_internal()
@@ -204,8 +227,10 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         if route == "/api/quote-draft":
             return self.handle_save_quote_draft()
 
-        return self.respond_json({"error": "Not found", "path": route}, status=HTTPStatus.NOT_FOUND)
+        if route == "/api/quotes":
+            return self.handle_create_quote()
 
+        return self.respond_json({"error": "Not found", "path": route}, status=HTTPStatus.NOT_FOUND)
     def read_json_body(self) -> dict:
         content_length = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(content_length) if content_length else b"{}"
@@ -1131,8 +1156,6 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             return self.respond_json({"error": "quote_id is required"}, status=HTTPStatus.BAD_REQUEST)
 
         with self.db() as conn:
-            # We don't necessarily need to require an import batch since it's a quote
-            # Update job run if job_id is present
             if payload.get("job_id") and len(str(payload.get("job_id"))) == 36 and "-" in str(payload.get("job_id")):
                 conn.execute(
                     """
@@ -1147,65 +1170,33 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                     (json.dumps(payload, ensure_ascii=False, default=json_default), payload["job_id"]),
                 )
 
-        # Merge new rows into the mock quote_draft.json if any
-        rows = payload.get("rows", [])
-        if rows:
-            draft_path = UPLOADS_DIR / "quote_draft.json"
-            draft_data = {"items": [], "meta": {}}
-            try:
-                if draft_path.exists():
-                    with open(draft_path, "r", encoding="utf-8") as f:
-                        draft_data = json.load(f)
-            except Exception as e:
-                logger.error(f"Error reading existing quote draft: {e}")
-                
-            try:
-                # If this is the active draft, let's just create a new structure
-                # Or append to existing if it's itemsById
-                if "items" in draft_data and isinstance(draft_data["items"], list):
-                    # Draft might be in the V2 array format if it was saved by frontend
-                    for row in rows:
-                        draft_data["items"].append({
-                            "name": row.get("name", "Unknown item"),
-                            "qty": row.get("qty", 1),
-                            "purchase_price": row.get("purchase_price"),
-                            "rrc_min": row.get("rrc"),
-                            "volume_l": row.get("volume_l"),
-                            "country": row.get("country"),
-                            "category": row.get("category"),
-                            "note": row.get("note", "")
-                        })
-                else:
-                    items_by_id = draft_data.get("itemsById", {})
-                    item_order = draft_data.get("itemOrder", [])
-                    import uuid
-                    
-                    for row in rows:
-                        new_id = str(uuid.uuid4())
-                        items_by_id[new_id] = {
-                            "id": new_id,
-                            "name": row.get("name", "Unknown item"),
-                            "qty": row.get("qty", 1),
-                            "purchase_price": row.get("purchase_price"),
-                            "rrc_min": row.get("rrc"),
-                            "volume_l": row.get("volume_l"),
-                            "country": row.get("country"),
-                            "category": row.get("category"),
-                            "note": row.get("note", "")
-                        }
-                        item_order.append(new_id)
-                    
-                    draft_data["itemsById"] = items_by_id
-                    draft_data["itemOrder"] = item_order
-
-                # Unset AI status to drop the loader in the UI
-                if "meta" in draft_data:
-                    draft_data["meta"]["aiProcessingStatus"] = "done"
-
-                with open(draft_path, "w", encoding="utf-8") as f:
-                    json.dump(draft_data, f, ensure_ascii=False)
-            except Exception as e:
-                logger.error(f"Error updating quote draft with AI rows: {e}")
+            # Check if quote exists
+            row = conn.execute("select id from quote_document where id = %s", (quote_id,)).fetchone()
+            if row:
+                rows = payload.get("rows", [])
+                if rows:
+                    conn.execute("delete from quote_item where quote_document_id = %s", (quote_id,))
+                    for i, item in enumerate(rows):
+                        conn.execute(
+                            """
+                            insert into quote_item (quote_document_id, line_no, raw_name, volume_l, purchase_price, rrc_min, sale_price, qty)
+                            values (%s, %s, %s, %s, %s, %s, %s, %s)
+                            """,
+                            (
+                                quote_id,
+                                i + 1,
+                                item.get("name") or item.get("raw_name") or "Unknown item",
+                                item.get("volume_l"),
+                                item.get("purchase_price"),
+                                item.get("rrc"),
+                                item.get("rrc"),
+                                item.get("qty", 1)
+                            )
+                        )
+                # Update status
+                conn.execute("update quote_document set status = 'ready' where id = %s", (quote_id,))
+            else:
+                logger.error(f"Quote {quote_id} not found when receiving n8n result!")
 
         return self.respond_json({"item": {"quote_id": quote_id, "status": "processed"}})
 
@@ -1296,6 +1287,123 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             logger.error(f"Proxy to n8n failed: {e}")
             msg = e.response.text if hasattr(e, "response") and e.response else str(e)
             return self.respond_json({"error": "N8n proxy request failed", "details": msg}, status=HTTPStatus.BAD_GATEWAY)
+
+
+
+    def serialize_quote(self, conn, row) -> dict:
+        items = conn.execute(
+            '''
+            select
+              id as source_product_id,
+              raw_name as name,
+              volume_l,
+              purchase_price,
+              rrc_min,
+              sale_price,
+              qty
+            from quote_item
+            where quote_document_id = %s
+            order by line_no asc
+            ''',
+            (row["id"],),
+        ).fetchall()
+        
+        for item in items:
+            item["source_product_id"] = str(item["source_product_id"])
+
+        return {
+            "id": str(row["id"]),
+            "status": row["status"],
+            "meta": {
+                "clientId": str(row["client_id"]) if row["client_id"] else "",
+                "quoteNumber": row["quote_number"],
+                "quoteDate": str(row["quote_date"]) if row["quote_date"] else "",
+                "requestTitle": row["request_title"] or "",
+                "note": row["manager_note"] or "",
+                "mode": row["mode"],
+                "aiProcessingStatus": "done",
+            },
+            "items": items,
+        }
+
+    def handle_list_quotes(self) -> None:
+        with self.db() as conn:
+            rows = conn.execute(
+                '''
+                select
+                  id, client_id, quote_number, quote_date, mode, status, manager_note, request_title
+                from quote_document
+                order by created_at desc
+                limit 100
+                '''
+            ).fetchall()
+            quotes = [self.serialize_quote(conn, r) for r in rows]
+        return self.respond_json({"items": quotes})
+
+    def handle_get_quote(self, quote_id: str) -> None:
+        with self.db() as conn:
+            row = conn.execute("select * from quote_document where id = %s", (quote_id,)).fetchone()
+            if not row:
+                return self.respond_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
+            quote = self.serialize_quote(conn, row)
+        return self.respond_json({"item": quote})
+
+    def handle_create_quote(self) -> None:
+        payload = self.read_json_body()
+        client_id = payload.get("meta", {}).get("clientId")
+        request_title = payload.get("meta", {}).get("requestTitle", "")
+        note = payload.get("meta", {}).get("note", "")
+        
+        from datetime import datetime
+        with self.db() as conn:
+            count = conn.execute("select count(*) from quote_document where date_trunc('day', created_at) = date_trunc('day', now())").fetchone()["count"]
+            quote_number = f"КП-{datetime.now().strftime('%Y%m%d')}-{count+1}"
+            
+            row = conn.execute(
+                '''
+                insert into quote_document (client_id, quote_number, quote_date, request_title, manager_note)
+                values (NULLIF(%s, ''), %s, CURRENT_DATE, %s, %s)
+                returning *
+                ''',
+                (client_id, quote_number, request_title, note)
+            ).fetchone()
+            quote = self.serialize_quote(conn, row)
+            
+        return self.respond_json({"item": quote})
+
+    def handle_update_quote(self, quote_id: str) -> None:
+        payload = self.read_json_body()
+        items = payload.get("items", [])
+        
+        with self.db() as conn:
+            row = conn.execute("select * from quote_document where id = %s", (quote_id,)).fetchone()
+            if not row:
+                return self.respond_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
+                
+            conn.execute("delete from quote_item where quote_document_id = %s", (quote_id,))
+            
+            for i, item in enumerate(items):
+                conn.execute(
+                    '''
+                    insert into quote_item (quote_document_id, line_no, raw_name, volume_l, purchase_price, rrc_min, sale_price, qty)
+                    values (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ''',
+                    (
+                        quote_id,
+                        i + 1,
+                        item.get("name") or item.get("raw_name"),
+                        item.get("volume_l"),
+                        item.get("purchase_price"),
+                        item.get("rrc_min"),
+                        item.get("sale_price"),
+                        item.get("qty", 1)
+                    )
+                )
+            
+            updated_quote = self.serialize_quote(conn, row)
+            
+        return self.respond_json({"item": updated_quote})
+
 
 
 def cleanup_worker():

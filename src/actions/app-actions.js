@@ -260,6 +260,37 @@ export function createActions(store, backend = null, authService = null, storage
     }
   }
 
+  
+  async function loadQuotesResource() {
+    if (!backend) return;
+    setResourceState("quotes", { status: "loading", error: null });
+    try {
+      const payload = await backend.loadQuotes();
+      const items = payload.items || [];
+      update((state) => {
+        const nextQuotes = { ...state.entities.quotesById };
+        const quoteOrder = [];
+
+        items.forEach((quote) => {
+          nextQuotes[quote.id] = quote;
+          quoteOrder.push(quote.id);
+        });
+
+        return {
+          ...state,
+          entities: {
+            ...state.entities,
+            quotesById: nextQuotes,
+            quoteOrder,
+          },
+        };
+      });
+      setResourceState("quotes", { status: "ready", error: null, items });
+    } catch (error) {
+      setResourceState("quotes", { status: "error", error: error.message });
+    }
+  }
+
   async function loadJobsResource() {
     if (!backend) return;
     setResourceState("jobs", { status: "loading", error: null });
@@ -1464,97 +1495,114 @@ export function createActions(store, backend = null, authService = null, storage
         }));
       }
     },
-    createNewQuote() {
+    async createNewQuote() {
       let createdQuoteId = null;
       let shouldAutoRunAi = false;
-      update((state) => {
-        const draft = state.ui.newQuoteDraft;
-        const client = state.entities.clientsById?.[draft.clientId] || null;
-        const quoteId = makeId("qt");
-        const aiState = deriveQuoteAiState(
-          {
-            requestFiles: draft.requestFiles || [],
-            note: draft.note || "",
-          },
-          state.settings || {},
-        );
-        createdQuoteId = quoteId;
-        shouldAutoRunAi = aiState.canRun;
-        const nextQuote = {
-          itemOrder: [],
-          itemsById: {},
-          meta: {
-            ...state.quote.meta,
-            clientId: client?.id || "",
-            clientName: client?.name || "",
-            requestTitle: draft.title || "",
-            requestFiles: draft.requestFiles || [],
-            quoteNumber: "",
-            quoteDate: toInputDate(),
-            note: draft.note || "",
-            mode: "internal",
-            aiProcessingStatus: aiState.status,
-            aiProcessingNote: aiState.note,
-            aiLastRunAt: aiState.canRun ? new Date().toISOString() : null,
-          },
-        };
-        const draftState = {
-          ...state,
-          quote: nextQuote,
-        };
-        const quoteRecord = createQuoteRecordFromState(
-          {
-            ...draftState,
-            ui: { ...draftState.ui, selectedQuoteId: quoteId },
-          },
-          { id: quoteId, linkedImportId: state.ui.selectedImportId, status: "draft" },
-        );
-        return {
-          ...state,
-          entities: {
-            ...state.entities,
-            quoteOrder: [quoteId, ...state.entities.quoteOrder],
-            quotesById: {
-              ...state.entities.quotesById,
-              [quoteId]: quoteRecord,
-            },
-          },
-          quote: {
-            ...nextQuote,
-          },
-          runtime: {
-            ...state.runtime,
-            quoteRequestFilesByQuoteId: {
-              ...(state.runtime.quoteRequestFilesByQuoteId || {}),
-              ...(state.runtime.quoteRequestDraftFile
-                ? { [quoteId]: state.runtime.quoteRequestDraftFile }
-                : {}),
-            },
-            quoteRequestDraftFile: null,
-          },
-          ui: {
-            ...state.ui,
-            activeView: "quote",
-            selectedQuoteId: quoteId,
-            modal: null,
-            selectedRowIds: [],
-            selectedRowDetailId: null,
-            clientPickerOpen: false,
-            clientPickerQuery: "",
-            newQuoteDraft: {
-              clientId: "",
-              title: "",
-              note: "",
-              requestFiles: [],
-              uploadStatus: "idle",
-              uploadProgress: 0,
-              uploadStage: "",
-              uploadLog: [],
-              uploadError: null,
-            },
-          },
-        };
-      });
+      const snapshot = store.getState();
+      const draft = snapshot.ui.newQuoteDraft;
+      const client = snapshot.entities.clientsById?.[draft.clientId] || null;
+      
+      const aiState = deriveQuoteAiState(
+        {
+          requestFiles: draft.requestFiles || [],
+          note: draft.note || "",
+        },
+        snapshot.settings || {},
+      );
+      
+      if (backend) {
+        try {
+          const res = await backend.createQuote({
+            meta: {
+              clientId: client?.id || "",
+              requestTitle: draft.title || "",
+              note: draft.note || ""
+            }
+          });
+          if (res.item) {
+            const returnedQuote = res.item;
+            createdQuoteId = returnedQuote.id;
+            
+            update((state) => {
+              const quoteRecord = {
+                id: createdQuoteId,
+                linkedImportId: null,
+                status: returnedQuote.status || "draft",
+                updatedAt: toInputDate(),
+                meta: {
+                  ...state.quote.meta,
+                  clientId: returnedQuote.meta.clientId,
+                  clientName: client?.name || "",
+                  requestTitle: returnedQuote.meta.requestTitle,
+                  requestFiles: draft.requestFiles || [],
+                  quoteNumber: returnedQuote.meta.quoteNumber,
+                  quoteDate: returnedQuote.meta.quoteDate,
+                  managerName: "Александр",
+                  note: returnedQuote.meta.note,
+                  mode: returnedQuote.meta.mode || "internal",
+                  aiProcessingStatus: aiState.status,
+                  aiProcessingNote: aiState.note,
+                  aiLastRunAt: aiState.canRun ? new Date().toISOString() : null,
+                },
+                items: returnedQuote.items || [],
+              };
+              
+              return {
+                ...state,
+                entities: {
+                  ...state.entities,
+                  quoteOrder: [createdQuoteId, ...state.entities.quoteOrder],
+                  quotesById: {
+                    ...state.entities.quotesById,
+                    [createdQuoteId]: quoteRecord,
+                  },
+                },
+                quote: {
+                  itemOrder: [],
+                  itemsById: {},
+                  meta: quoteRecord.meta,
+                },
+                runtime: {
+                  ...state.runtime,
+                  quoteRequestFilesByQuoteId: {
+                    ...(state.runtime.quoteRequestFilesByQuoteId || {}),
+                    ...(state.runtime.quoteRequestDraftFile
+                      ? { [createdQuoteId]: state.runtime.quoteRequestDraftFile }
+                      : {}),
+                  },
+                  quoteRequestDraftFile: null,
+                },
+                ui: {
+                  ...state.ui,
+                  activeView: "quote",
+                  selectedQuoteId: createdQuoteId,
+                  modal: null,
+                  selectedRowIds: [],
+                  selectedRowDetailId: null,
+                  clientPickerOpen: false,
+                  clientPickerQuery: "",
+                  newQuoteDraft: {
+                    clientId: "",
+                    title: "",
+                    note: "",
+                    requestFiles: [],
+                    uploadStatus: "idle",
+                    uploadProgress: 0,
+                    uploadStage: "",
+                    uploadLog: [],
+                    uploadError: null,
+                  },
+                },
+              };
+            });
+            shouldAutoRunAi = aiState.canRun;
+          }
+        } catch (error) {
+          console.error("Failed to create quote", error);
+          // Fallback to local creation if backend fails is omitted for now to force DB logic
+          return;
+        }
+      }
       if (shouldAutoRunAi && createdQuoteId) {
         setTimeout(() => {
           const current = store.getState();
@@ -1870,6 +1918,7 @@ export function createActions(store, backend = null, authService = null, storage
         loadProductsResource(currentState.ui.selectedImportId),
         loadCatalogResource(),
         loadQuoteDraftResource(),
+        loadQuotesResource(),
         loadJobsResource(),
       ]);
       await loadImportStatusResource(store.getState().ui.selectedImportId);
@@ -1902,6 +1951,9 @@ export function createActions(store, backend = null, authService = null, storage
     async saveQuoteDraft() {
       if (!backend) return;
       const currentState = store.getState();
+      const quoteId = currentState.ui.selectedQuoteId;
+      if (!quoteId) return;
+
       const items = currentState.quote.itemOrder
         .map((id) => currentState.quote.itemsById[id])
         .filter(Boolean)
@@ -1909,6 +1961,8 @@ export function createActions(store, backend = null, authService = null, storage
           source_product_id: item.source_product_id,
           name: item.name,
           qty: item.qty,
+          volume_l: item.volume_l,
+          rrc_min: item.rrc_min,
           purchase_price: item.purchase_price,
           sale_price: item.sale_price,
           supplier_id: item.supplier_id,
@@ -1921,12 +1975,27 @@ export function createActions(store, backend = null, authService = null, storage
 
       setResourceState("quoteDraft", { status: "saving", error: null });
       try {
-        const response = await backend.saveQuoteDraft(payload);
+        const response = await backend.saveQuote(quoteId, payload);
+        // Also update local quote record
+        update((state) => syncSelectedQuoteRecord({
+          ...state,
+          entities: {
+            ...state.entities,
+            quotesById: {
+              ...state.entities.quotesById,
+              [quoteId]: {
+                ...(state.entities.quotesById?.[quoteId] || {}),
+                items: response.item?.items || items
+              }
+            }
+          }
+        }, { quoteId }));
+        
         setResourceState("quoteDraft", {
           status: "ready",
           item: response,
           error: null,
-          lastSavedAt: response?.saved_at || null,
+          lastSavedAt: new Date().toISOString(),
         });
       } catch (error) {
         setResourceState("quoteDraft", { status: "error", error: error.message });
