@@ -505,11 +505,13 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         with self.db() as conn:
             imports = self.load_serialized_imports(conn)
             suppliers = self.load_suppliers(conn)
+            clients = self.load_clients(conn)
         return self.respond_json(
             {
                 "items": {
                     "imports": imports,
                     "suppliers": suppliers,
+                    "clients": clients,
                 },
                 "runtime": {
                     "data_source": "postgres-api",
@@ -517,6 +519,24 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 },
             }
         )
+
+    def load_clients(self, conn) -> list[dict]:
+        rows = conn.execute(
+            """
+            select id, name, inn, city
+            from client_account
+            order by name asc
+            """
+        ).fetchall()
+        return [
+            {
+                "id": str(row["id"]),
+                "name": row["name"],
+                "inn": row["inn"],
+                "city": row["city"],
+            }
+            for row in rows
+        ]
 
     def load_serialized_imports(self, conn) -> list[dict]:
         batch_rows = conn.execute(

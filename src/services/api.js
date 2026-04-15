@@ -1,4 +1,4 @@
-import { normalizeImportsToState } from "../data/demo-data.js";
+import { createInitialState } from "../state/initial-state.js";
 
 async function fetchJson(url) {
   const response = await fetch(url, {
@@ -17,7 +17,10 @@ async function fetchJson(url) {
 export async function loadStateFromApi(apiBaseUrl) {
   const payload = await fetchJson(`${apiBaseUrl}/bootstrap`);
   const imports = payload?.items?.imports || [];
-  const state = normalizeImportsToState(imports, {
+  const suppliers = payload?.items?.suppliers || [];
+  const clients = payload?.items?.clients || [];
+  
+  const state = createInitialState({ imports, suppliers, clients }, {
     dataSource: "local-api",
     dataSourceLabel: `локальный backend (${apiBaseUrl})`,
     bootstrapMode: "api",

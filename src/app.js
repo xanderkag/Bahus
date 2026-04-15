@@ -1,5 +1,5 @@
 import { createActions } from "./actions/app-actions.js";
-import { createDemoState } from "./data/demo-data.js";
+
 import { loadStateFromApi } from "./services/api.js";
 import { createBackend } from "./services/backend.js";
 import { getBootstrapConfig, getStoredSidebarCollapsed, getStoredTheme, persistDataSource } from "./services/config.js";
@@ -57,31 +57,25 @@ function renderBootMessage(title, message) {
 async function bootstrapState() {
   const config = getBootstrapConfig();
 
-  if (config.requestedSource === "demo") {
-    persistDataSource("demo");
-    return createDemoState();
-  }
-
   try {
     const apiState = await loadStateFromApi(config.apiBaseUrl);
     apiState.runtime.apiBaseUrl = config.apiBaseUrl;
     persistDataSource("local-api");
     return apiState;
   } catch (error) {
-    const fallback = createDemoState();
-    fallback.runtime = {
-      dataSource: "demo",
-      dataSourceLabel: "embedded demo",
-      bootstrapMode: config.requestedSource === "local-api" ? "api-fallback" : "auto-fallback",
-      bootstrapError: error.message,
-    };
-    persistDataSource("demo");
-    return fallback;
+    document.body.innerHTML = `
+      <div style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #0b1120; color: #ff6b6b; text-align: center; padding: 2rem;">
+        <h1 style="margin-bottom: 1rem;">Ошибка запуска приложения</h1>
+        <p style="color: #94a3b8; max-width: 600px; line-height: 1.5;">Не удалось подключиться к бэкенду Bakhus: <b>${error.message}</b></p>
+        <p style="color: #94a3b8; max-width: 600px; margin-top: 1rem; font-size: 0.9em;">Убедитесь, что сервер доступен по адресу ${config.apiBaseUrl}</p>
+      </div>
+    `;
+    throw error;
   }
 }
 
 async function main() {
-  renderBootMessage("Загрузка workspace", "Пробуем поднять состояние из локального API. Если API недоступен, интерфейс автоматически переключится на встроенный demo режим.");
+  renderBootMessage("Загрузка workspace", "Подключаемся к Bakhus API...");
   const config = getBootstrapConfig();
   const initialState = await bootstrapState();
   initialState.ui = {
@@ -95,10 +89,7 @@ async function main() {
   const store = createStore(initialState);
   const authService = initialState.settings?.auth_enabled ? createFirebaseAuthService() : null;
   const storageService = initialState.settings?.live_upload_enabled ? createFirebaseStorageService() : null;
-  const backend =
-    initialState.runtime?.dataSource === "local-api"
-      ? createBackend(initialState.runtime.apiBaseUrl || config.apiBaseUrl)
-      : null;
+  const backend = createBackend(initialState.runtime.apiBaseUrl || config.apiBaseUrl);
   const actions = createActions(store, backend, authService, storageService);
   store.actions = actions;
   const handlers = createAppEventHandlers(actions);

@@ -1,4 +1,4 @@
-import { createProductKey } from "../data/demo-data.js";
+import { createProductKey } from "../state/initial-state.js";
 
 export function mapApiProductToEntity(product) {
   return {
