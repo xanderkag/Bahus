@@ -1146,6 +1146,40 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                     """,
                     (json.dumps(payload, ensure_ascii=False, default=json_default), payload["job_id"]),
                 )
+
+        # Merge new rows into the mock quote_draft.json if any
+        rows = payload.get("rows", [])
+        if rows:
+            draft_path = UPLOADS_DIR / "quote_draft.json"
+            if draft_path.exists():
+                try:
+                    with open(draft_path, "r", encoding="utf-8") as f:
+                        draft_data = json.load(f)
+                    items_by_id = draft_data.get("itemsById", {})
+                    item_order = draft_data.get("itemOrder", [])
+                    import uuid
+                    
+                    for row in rows:
+                        new_id = str(uuid.uuid4())
+                        items_by_id[new_id] = {
+                            "id": new_id,
+                            "original_name": row.get("name", "Unknown item"),
+                            "original_quantity": row.get("quantity", 1),
+                            "note": row.get("note", "")
+                        }
+                        item_order.append(new_id)
+                    
+                    draft_data["itemsById"] = items_by_id
+                    draft_data["itemOrder"] = item_order
+                    # Unset AI status to drop the loader in the UI
+                    if "meta" in draft_data:
+                        draft_data["meta"]["aiProcessingStatus"] = "done"
+
+                    with open(draft_path, "w", encoding="utf-8") as f:
+                        json.dump(draft_data, f, ensure_ascii=False)
+                except Exception as e:
+                    logger.error(f"Error updating quote draft with AI rows: {e}")
+
         return self.respond_json({"item": {"quote_id": quote_id, "status": "processed"}})
 
     def handle_n8n_quote_failed(self) -> None:
