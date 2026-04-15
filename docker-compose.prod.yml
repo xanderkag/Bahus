@@ -32,6 +32,12 @@ services:
       PUBLIC_API_URL: ${PUBLIC_API_URL}
     volumes:
       - bakhus-uploads:/app/.local/uploads
+      - bakhus-logs:/app/.local/logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
       postgres:
         condition: service_healthy
@@ -46,9 +52,16 @@ services:
       - "80:80"
     volumes:
       - bakhus-uploads:/app/.local/uploads:ro
+      - bakhus-logs:/var/log/nginx
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
       - postgres-api
 
 volumes:
   bakhus-postgres-data:
   bakhus-uploads:
+  bakhus-logs:

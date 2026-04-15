@@ -27,6 +27,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger("bakhus-api")
 
+import logging.handlers
+log_dir = Path(__file__).resolve().parent.parent / ".local" / "logs"
+log_dir.mkdir(parents=True, exist_ok=True)
+file_handler = logging.handlers.RotatingFileHandler(
+    log_dir / "api.log", maxBytes=5_000_000, backupCount=5
+)
+file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+logger.addHandler(file_handler)
+
 try:
     import psycopg
     from psycopg.rows import dict_row
