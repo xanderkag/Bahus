@@ -1,28 +1,26 @@
 # Bakhus Assistant - Agent Guide (Current Status & Context)
 
 ## 🎯 Current Mission
-We are in the **Prototype & Demo** stage. The primary goal is a successful and impressive client presentation in **1-2 days**.
+We are in the **Production Maintenance** stage. The project has transitioned from a demo prototype on Cloud Run to a fully operational monolithic deployment on a Yandex Cloud VM. The next goals revolve around feature iteration and scaling the n8n workflows.
 
 ## 🛠 Project Architecture
-- **Stage**: Active Prototyping.
-- **Frontend**: Modular Vanilla JS/HTML in `src/`. No heavy build step. Hosted on Firebase.
-- **Backend (Mock)**: `scripts/mock_api.py` (Lightweight Python, in-memory demo data). This is the **primary** backend for the upcoming demo.
-- **Backend (Postgres)**: `scripts/postgres_api.py` is ready but is a secondary "next step" after the initial demo.
-- **Automation**: n8n-driven async flow for file parsing and quote normalization.
+- **Stage**: Production.
+- **Frontend**: Modular Vanilla JS/HTML in `src/`. Dynamically maps API calls to `window.location.origin/api`. Served by Nginx container.
+- **Backend (Primary)**: `scripts/postgres_api.py`. Includes a CORS proxy, cleanup workers, database retry logic, and handles robust multipart `requests` forwarding to n8n.
+- **Database**: PostgreSQL database mounted via persistent Docker volume.
+- **CI/CD**: GitHub Actions auto-deploys any `main` branch pushes directly to the Yandex Cloud server.
 
-## 🚀 Key Priorities (1-2 Days)
-1.  **Stable n8n Flow**: Ensure `Upload -> n8n Processing -> Webhook Callback -> UI Update` works flawlessly.
-2.  **Demo "WOW" Factor**: UI should be polished, fast, and clearly demonstrate the value (AI-powered parsing).
-3.  **Minimal Backend Effort**: Do NOT spend heavy resources on the Postgres transition until the demo is successful.
+## 🚀 Key Deploy Information
+- **Yandex VM**: `111.88.144.93`
+- **Compose Stack**: `docker-compose.prod.yml`
+- **Documentation**: 
+  - Overview: `README.md`
+  - Infrastructure & Deployment: `docs/INFRASTRUCTURE.md`
+  - Manual Server Operations: `docs/YANDEX_DEPLOY.md`
 
 ## 🧹 Technical Debt & Maintenance
-- **Removed (Cleaned up)**: `src/views/files.js`, root HTML mocks.
-- **Known Issues**:
-    - Auth is currently client-side only (localStorage/demo-data).
-    - Files are stored locally in `.local/uploads` (no cloud bucket yet).
-- **Maintenance**: Keep `src/data/demo-data.js` and `scripts/mock_api.py` in sync with any UI changes.
+- **Legacy Files**: `scripts/mock_api.py`, `price_import_review_ui_html_mock.html`, `bakhus_assistant_kp_update.html`, and `src/views/files.js` are considered deprecated legacy files. DO NOT USE them as references for current implementation.
+- **Auth**: Still client-side oriented. A full SSR/server-based auth flow could be considered next.
 
-## 📚 Reference Docs
-- [Project Guide](file:///Users/alexanderliapustin/Desktop/VS%20/Bahus/docs/project-guide.md)
-- [n8n Async Flow](file:///Users/alexanderliapustin/Desktop/VS%20/Bahus/docs/n8n-async-flow.md)
-- [README.md](file:///Users/alexanderliapustin/Desktop/VS%20/Bahus/README.md)
+## 🤖 n8n Workflow State
+The most up-to-date and active workflow reference is continuously stored in `n8n/bahus_final_workflow.json` (keys are stripped out for safety). Make sure to parse it if you need UI-to-n8n parameter context.

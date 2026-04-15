@@ -91,12 +91,18 @@ sudo docker logs -f bakhus-postgres-api
 sudo docker-compose -f docker-compose.prod.yml up -d
 ```
 
-## 8. Обновление проекта
+## 8. Обновление проекта (CI/CD)
 
-Когда вы выкатываете новые изменения (git pull):
+Ручные `git pull` команды больше не требуются! В репозитории настроен автоматический пайплайн через **GitHub Actions**.
 
+Когда вы выкатываете новые изменения:
+1. Выполните `git push origin main`.
+2. GitHub Action автоматически зайдет на эту машину по SSH, скопирует новые изменения и выполнит `docker-compose -f docker-compose.prod.yml up -d --build`.
+3. Следить за деплоем можно во вкладке "Actions" на GitHub обновении вашего репозитория.
+
+Если по какой-то причине нужно задеплоить руками, или перезапустить зависшие сервисы, зайдите на сервер и выполните:
 ```bash
-cd /opt/bahus
-git pull
+cd /home/bakhus/bakhus
+sudo docker-compose -f docker-compose.prod.yml down -v
 sudo docker-compose -f docker-compose.prod.yml up -d --build
 ```
