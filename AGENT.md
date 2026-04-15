@@ -23,4 +23,5 @@ We are in the **Production Maintenance** stage. The project has transitioned fro
 - **Auth**: Still client-side oriented. A full SSR/server-based auth flow could be considered next.
 
 ## 🤖 n8n Workflow State
-The most up-to-date and active workflow reference is continuously stored in `n8n/bahus_final_workflow.json` (keys are stripped out for safety). Make sure to parse it if you need UI-to-n8n parameter context.
+The most up-to-date and active workflow reference is continuously stored in `n8n/bahus_production_workflow_v2.json`. 
+**CRITICAL RULE:** All n8n workflows MUST be stored EXCLUSIVELY inside the `n8n` directory within the repository. NEVER create loose workflow files on the Desktop or root directory. Keep the project clean.
