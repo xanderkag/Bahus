@@ -1155,6 +1155,15 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         if not quote_id:
             return self.respond_json({"error": "quote_id is required"}, status=HTTPStatus.BAD_REQUEST)
 
+        # Сохраняем сырой ответ от n8n локально на случай ошибок парсинга
+        try:
+            raw_path = UPLOADS_DIR / f"quote_{quote_id}_raw.json"
+            with open(raw_path, 'w', encoding='utf-8') as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2, default=json_default)
+            logger.info(f"Saved raw n8n payload to {raw_path}")
+        except Exception as e:
+            logger.error(f"Failed to save raw payload for quote {quote_id}: {e}")
+
         with self.db() as conn:
             if payload.get("job_id") and len(str(payload.get("job_id"))) == 36 and "-" in str(payload.get("job_id")):
                 conn.execute(
