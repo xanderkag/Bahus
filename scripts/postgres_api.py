@@ -167,6 +167,8 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             return self.handle_list_jobs()
         if route == "/api/suppliers":
             return self.handle_list_suppliers()
+        if route == "/api/quote-draft":
+            return self.handle_get_quote_draft()
 
         return self.respond_json({"error": "Not found", "path": route}, status=HTTPStatus.NOT_FOUND)
 
@@ -198,8 +200,9 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         if route == "/api/webhooks/n8n/quote-failed":
             return self.handle_n8n_quote_failed()
         if route == "/api/proxy/n8n":
-
             return self.handle_proxy_n8n()
+        if route == "/api/quote-draft":
+            return self.handle_save_quote_draft()
 
         return self.respond_json({"error": "Not found", "path": route}, status=HTTPStatus.NOT_FOUND)
 
@@ -1166,6 +1169,28 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                     (json.dumps(payload, ensure_ascii=False, default=json_default), payload["job_id"]),
                 )
         return self.respond_json({"item": {"quote_id": quote_id, "status": "failed"}})
+
+    def handle_get_quote_draft(self) -> None:
+        draft_path = UPLOADS_DIR / "quote_draft.json"
+        if not draft_path.exists():
+            return self.respond_json({"message": "No draft"}, status=HTTPStatus.NOT_FOUND)
+        try:
+            with open(draft_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return self.respond_json(data)
+        except Exception as e:
+            return self.respond_json({"error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def handle_save_quote_draft(self) -> None:
+        payload = self.read_json_body()
+        draft_path = UPLOADS_DIR / "quote_draft.json"
+        try:
+            payload["saved_at"] = datetime.now().isoformat()
+            with open(draft_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False)
+            return self.respond_json(payload)
+        except Exception as e:
+            return self.respond_json({"error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def handle_proxy_n8n(self) -> None:
 
