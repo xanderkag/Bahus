@@ -1218,6 +1218,26 @@ export function createActions(store, backend = null, authService = null, storage
     openQuotePreview() {
       update((state) => ({ ...state, ui: { ...state.ui, modal: "quote-preview" } }));
     },
+    openQuoteSettings() {
+      update((state) => ({
+        ...state,
+        ui: {
+          ...state.ui,
+          modal: "new-quote",
+          newQuoteDraft: {
+            clientId: state.quote.meta?.clientId || "",
+            title: state.quote.meta?.requestTitle || "",
+            note: state.quote.meta?.note || "",
+            requestFiles: state.quote.meta?.requestFiles || [],
+            uploadStatus: "idle",
+            uploadProgress: 0,
+            uploadStage: "",
+            uploadLog: [],
+            uploadError: null,
+          },
+        },
+      }));
+    },
     openNewQuoteModal() {
       update((state) => ({
         ...state,

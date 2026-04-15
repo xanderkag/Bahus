@@ -606,22 +606,10 @@ export function renderQuote(state) {
           </div>
           <div class="toolbar-actions quote-actions">
             <div class="action-group">
-              <button class="ghost-btn" data-action="goToReview">Вернуться в review</button>
+              <button class="ghost-btn" data-action="openQuoteSettings">Параметры КП</button>
               <button class="ghost-btn btn-with-icon" data-action="goToReview"><span class="btn-icon-glyph">+</span><span>Добавить позицию</span></button>
-              <button class="ghost-btn" data-action="fillQuoteFromVisibleReview">Заполнить из фильтра</button>
               <button class="ghost-btn" data-action="runQuoteAiProcessing" ${canRunAi ? "" : "disabled"}>${aiStatus === "running" ? "Обработка ИИ..." : "Обработка ИИ"}</button>
-              <button class="ghost-btn" data-action="openQuotePreview">Предпросмотр</button>
-              <span class="action-divider" aria-hidden="true"></span>
-              <button class="ghost-btn soft-danger-btn" data-action="clearQuote">Очистить</button>
             </div>
-            ${
-              state.runtime?.dataSource === "local-api"
-                ? `<div class="action-group">
-                    <button class="ghost-btn" data-action="loadQuoteDraft">Загрузить черновик</button>
-                    <button class="ghost-btn" data-action="saveQuoteDraft">Сохранить черновик</button>
-                  </div>`
-                : ""
-            }
           </div>
         </div>
         <div class="quote-alert-strip">
