@@ -928,7 +928,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             issues = payload.get("issues") or []
             parse_result = payload.get("parse_result") or payload
 
-            if payload.get("job_id"):
+            if payload.get("job_id") and len(str(payload.get("job_id"))) == 36 and "-" in str(payload.get("job_id")):
                 conn.execute(
                     """
                     update job_run
@@ -1066,7 +1066,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             import_file_id = self.resolve_import_file_id(conn, import_id, payload.get("import_file_id"))
             error_text = payload.get("error") or payload.get("message") or "Обработка завершилась с ошибкой"
 
-            if payload.get("job_id"):
+            if payload.get("job_id") and len(str(payload.get("job_id"))) == 36 and "-" in str(payload.get("job_id")):
                 conn.execute(
                     """
                     update job_run
@@ -1121,7 +1121,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         with self.db() as conn:
             # We don't necessarily need to require an import batch since it's a quote
             # Update job run if job_id is present
-            if payload.get("job_id"):
+            if payload.get("job_id") and len(str(payload.get("job_id"))) == 36 and "-" in str(payload.get("job_id")):
                 conn.execute(
                     """
                     update job_run
@@ -1143,7 +1143,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             return self.respond_json({"error": "quote_id is required"}, status=HTTPStatus.BAD_REQUEST)
             
         with self.db() as conn:
-            if payload.get("job_id"):
+            if payload.get("job_id") and len(str(payload.get("job_id"))) == 36 and "-" in str(payload.get("job_id")):
                 conn.execute(
                     """
                     update job_run
