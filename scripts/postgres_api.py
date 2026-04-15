@@ -183,7 +183,13 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             return self.handle_n8n_import_result()
         if route == "/api/webhooks/n8n/import-failed":
             return self.handle_n8n_import_failed()
+
+        if route == "/api/webhooks/n8n/quote-result":
+            return self.handle_n8n_quote_result()
+        if route == "/api/webhooks/n8n/quote-failed":
+            return self.handle_n8n_quote_failed()
         if route == "/api/proxy/n8n":
+
             return self.handle_proxy_n8n()
 
         return self.respond_json({"error": "Not found", "path": route}, status=HTTPStatus.NOT_FOUND)
@@ -1105,7 +1111,55 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
 
         return self.respond_json({"item": refreshed, "error": error_text})
 
+
+    def handle_n8n_quote_result(self) -> None:
+        payload = self.read_json_body()
+        quote_id = payload.get("quote_id") or payload.get("import_id") or payload.get("import_batch_id")
+        if not quote_id:
+            return self.respond_json({"error": "quote_id is required"}, status=HTTPStatus.BAD_REQUEST)
+
+        with self.db() as conn:
+            # We don't necessarily need to require an import batch since it's a quote
+            # Update job run if job_id is present
+            if payload.get("job_id"):
+                conn.execute(
+                    """
+                    update job_run
+                    set
+                      status = 'done',
+                      finished_at = now(),
+                      result = %s::jsonb,
+                      updated_at = now()
+                    where id = %s
+                    """,
+                    (json.dumps(payload, ensure_ascii=False, default=json_default), payload["job_id"]),
+                )
+        return self.respond_json({"item": {"quote_id": quote_id, "status": "processed"}})
+
+    def handle_n8n_quote_failed(self) -> None:
+        payload = self.read_json_body()
+        quote_id = payload.get("quote_id") or payload.get("import_id") or payload.get("import_batch_id")
+        if not quote_id:
+            return self.respond_json({"error": "quote_id is required"}, status=HTTPStatus.BAD_REQUEST)
+            
+        with self.db() as conn:
+            if payload.get("job_id"):
+                conn.execute(
+                    """
+                    update job_run
+                    set
+                      status = 'failed',
+                      finished_at = now(),
+                      result = %s::jsonb,
+                      updated_at = now()
+                    where id = %s
+                    """,
+                    (json.dumps(payload, ensure_ascii=False, default=json_default), payload["job_id"]),
+                )
+        return self.respond_json({"item": {"quote_id": quote_id, "status": "failed"}})
+
     def handle_proxy_n8n(self) -> None:
+
         import email.parser
         content_type = self.headers.get("Content-Type", "")
         if "multipart/form-data" not in content_type:
