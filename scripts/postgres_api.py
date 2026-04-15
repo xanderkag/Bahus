@@ -1151,57 +1151,61 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         rows = payload.get("rows", [])
         if rows:
             draft_path = UPLOADS_DIR / "quote_draft.json"
-            if draft_path.exists():
-                try:
+            draft_data = {"items": [], "meta": {}}
+            try:
+                if draft_path.exists():
                     with open(draft_path, "r", encoding="utf-8") as f:
                         draft_data = json.load(f)
+            except Exception as e:
+                logger.error(f"Error reading existing quote draft: {e}")
+                
+            try:
+                # If this is the active draft, let's just create a new structure
+                # Or append to existing if it's itemsById
+                if "items" in draft_data and isinstance(draft_data["items"], list):
+                    # Draft might be in the V2 array format if it was saved by frontend
+                    for row in rows:
+                        draft_data["items"].append({
+                            "name": row.get("name", "Unknown item"),
+                            "qty": row.get("qty", 1),
+                            "purchase_price": row.get("purchase_price"),
+                            "rrc_min": row.get("rrc"),
+                            "volume_l": row.get("volume_l"),
+                            "country": row.get("country"),
+                            "category": row.get("category"),
+                            "note": row.get("note", "")
+                        })
+                else:
+                    items_by_id = draft_data.get("itemsById", {})
+                    item_order = draft_data.get("itemOrder", [])
+                    import uuid
                     
-                    # If this is the active draft, let's just create a new structure
-                    # Or append to existing if it's itemsById
-                    if "items" in draft_data and isinstance(draft_data["items"], list):
-                        # Draft might be in the V2 array format if it was saved by frontend
-                        for row in rows:
-                            draft_data["items"].append({
-                                "name": row.get("name", "Unknown item"),
-                                "qty": row.get("qty", 1),
-                                "purchase_price": row.get("purchase_price"),
-                                "rrc_min": row.get("rrc"),
-                                "volume_l": row.get("volume_l"),
-                                "country": row.get("country"),
-                                "category": row.get("category"),
-                                "note": row.get("note", "")
-                            })
-                    else:
-                        items_by_id = draft_data.get("itemsById", {})
-                        item_order = draft_data.get("itemOrder", [])
-                        import uuid
-                        
-                        for row in rows:
-                            new_id = str(uuid.uuid4())
-                            items_by_id[new_id] = {
-                                "id": new_id,
-                                "name": row.get("name", "Unknown item"),
-                                "qty": row.get("qty", 1),
-                                "purchase_price": row.get("purchase_price"),
-                                "rrc_min": row.get("rrc"),
-                                "volume_l": row.get("volume_l"),
-                                "country": row.get("country"),
-                                "category": row.get("category"),
-                                "note": row.get("note", "")
-                            }
-                            item_order.append(new_id)
-                        
-                        draft_data["itemsById"] = items_by_id
-                        draft_data["itemOrder"] = item_order
+                    for row in rows:
+                        new_id = str(uuid.uuid4())
+                        items_by_id[new_id] = {
+                            "id": new_id,
+                            "name": row.get("name", "Unknown item"),
+                            "qty": row.get("qty", 1),
+                            "purchase_price": row.get("purchase_price"),
+                            "rrc_min": row.get("rrc"),
+                            "volume_l": row.get("volume_l"),
+                            "country": row.get("country"),
+                            "category": row.get("category"),
+                            "note": row.get("note", "")
+                        }
+                        item_order.append(new_id)
+                    
+                    draft_data["itemsById"] = items_by_id
+                    draft_data["itemOrder"] = item_order
 
-                    # Unset AI status to drop the loader in the UI
-                    if "meta" in draft_data:
-                        draft_data["meta"]["aiProcessingStatus"] = "done"
+                # Unset AI status to drop the loader in the UI
+                if "meta" in draft_data:
+                    draft_data["meta"]["aiProcessingStatus"] = "done"
 
-                    with open(draft_path, "w", encoding="utf-8") as f:
-                        json.dump(draft_data, f, ensure_ascii=False)
-                except Exception as e:
-                    logger.error(f"Error updating quote draft with AI rows: {e}")
+                with open(draft_path, "w", encoding="utf-8") as f:
+                    json.dump(draft_data, f, ensure_ascii=False)
+            except Exception as e:
+                logger.error(f"Error updating quote draft with AI rows: {e}")
 
         return self.respond_json({"item": {"quote_id": quote_id, "status": "processed"}})
 
