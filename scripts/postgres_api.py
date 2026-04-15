@@ -1154,6 +1154,12 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         quote_id = payload.get("quote_id") or payload.get("import_id") or payload.get("import_batch_id")
         if not quote_id:
             return self.respond_json({"error": "quote_id is required"}, status=HTTPStatus.BAD_REQUEST)
+        
+        import uuid
+        try:
+            uuid.UUID(str(quote_id))
+        except ValueError:
+            return self.respond_json({"error": "Invalid quote_id format"}, status=HTTPStatus.BAD_REQUEST)
 
         # Сохраняем сырой ответ от n8n локально на случай ошибок парсинга
         try:
@@ -1214,6 +1220,12 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         quote_id = payload.get("quote_id") or payload.get("import_id") or payload.get("import_batch_id")
         if not quote_id:
             return self.respond_json({"error": "quote_id is required"}, status=HTTPStatus.BAD_REQUEST)
+            
+        import uuid
+        try:
+            uuid.UUID(str(quote_id))
+        except ValueError:
+            return self.respond_json({"error": "Invalid quote_id format"}, status=HTTPStatus.BAD_REQUEST)
             
         with self.db() as conn:
             if payload.get("job_id") and len(str(payload.get("job_id"))) == 36 and "-" in str(payload.get("job_id")):
@@ -1350,6 +1362,12 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         return self.respond_json({"items": quotes})
 
     def handle_get_quote(self, quote_id: str) -> None:
+        import uuid
+        try:
+            uuid.UUID(str(quote_id))
+        except ValueError:
+            return self.respond_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
+            
         with self.db() as conn:
             row = conn.execute("select * from quote_document where id = %s", (quote_id,)).fetchone()
             if not row:
@@ -1360,7 +1378,15 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
     def handle_create_quote(self) -> None:
         payload = self.read_json_body()
         client_id = payload.get("meta", {}).get("clientId")
-        client_id = client_id if client_id else None
+        
+        import uuid
+        if client_id:
+            try:
+                uuid.UUID(str(client_id))
+            except ValueError:
+                client_id = None
+        else:
+            client_id = None
         
         note = payload.get("meta", {}).get("note", "")
         
@@ -1372,7 +1398,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             row = conn.execute(
                 '''
                 insert into quote_document (client_id, quote_number, quote_date, note)
-                values (%s, %s, CURRENT_DATE, %s)
+                values ((select id from client_account where id = %s), %s, CURRENT_DATE, %s)
                 returning *
                 ''',
                 (client_id, quote_number, note)
@@ -1382,6 +1408,12 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         return self.respond_json({"item": quote})
 
     def handle_update_quote(self, quote_id: str) -> None:
+        import uuid
+        try:
+            uuid.UUID(str(quote_id))
+        except ValueError:
+            return self.respond_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
+            
         payload = self.read_json_body()
         items = payload.get("items", [])
         
