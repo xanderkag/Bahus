@@ -183,6 +183,8 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             return self.handle_n8n_import_result()
         if route == "/api/webhooks/n8n/import-failed":
             return self.handle_n8n_import_failed()
+        if route == "/api/proxy/n8n":
+            return self.handle_proxy_n8n()
 
         return self.respond_json({"error": "Not found", "path": route}, status=HTTPStatus.NOT_FOUND)
 
@@ -1102,6 +1104,49 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             refreshed = self.serialize_import(conn, self.require_import(conn, import_id))
 
         return self.respond_json({"item": refreshed, "error": error_text})
+
+    def handle_proxy_n8n(self) -> None:
+        import email.parser
+        content_type = self.headers.get("Content-Type", "")
+        if "multipart/form-data" not in content_type:
+            return self.respond_json({"error": "multipart/form-data required"}, status=HTTPStatus.BAD_REQUEST)
+            
+        content_length_str = self.headers.get("Content-Length")
+        if not content_length_str:
+            return self.respond_json({"error": "Content-Length required"}, status=HTTPStatus.LENGTH_REQUIRED)
+            
+        body = self.rfile.read(int(content_length_str))
+        msg_bytes = b"Content-Type: " + content_type.encode() + b"\r\n\r\n" + body
+        container = email.parser.BytesParser().parsebytes(msg_bytes)
+        
+        payload = {}
+        files = {}
+        for part in container.get_payload():
+            if isinstance(part, str): continue
+            name = part.get_param("name", header="content-disposition")
+            filename = part.get_filename()
+            if filename:
+                files[name] = (filename, part.get_payload(decode=True), part.get_content_type())
+            else:
+                payload[name] = part.get_payload(decode=True).decode("utf-8")
+                
+        target_url = payload.pop("target_webhook_url", None)
+        if not target_url:
+            return self.respond_json({"error": "target_webhook_url required in form data"}, status=HTTPStatus.BAD_REQUEST)
+            
+        try:
+            r = requests.post(target_url, data=payload, files=files if files else None, timeout=60)
+            r.raise_for_status()
+            
+            try:
+                return self.respond_json(r.json())
+            except ValueError:
+                return self.respond_json({"message": "Proxy ok, no JSON response", "raw_response": r.text})
+                
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Proxy to n8n failed: {e}")
+            msg = e.response.text if hasattr(e, "response") and e.response else str(e)
+            return self.respond_json({"error": "N8n proxy request failed", "details": msg}, status=HTTPStatus.BAD_GATEWAY)
 
 
 def cleanup_worker():

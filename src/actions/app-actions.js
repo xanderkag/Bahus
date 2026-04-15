@@ -2159,7 +2159,9 @@ export function createActions(store, backend = null, authService = null, storage
       formData.append("callbackSuccessUrl", `${callbackBaseUrl}/webhooks/n8n/quote-result`);
       formData.append("callbackFailedUrl", `${callbackBaseUrl}/webhooks/n8n/quote-failed`);
 
-      fetch(workflowEndpoint, {
+      formData.append("target_webhook_url", workflowEndpoint);
+
+      fetch("/api/proxy/n8n", {
         method: "POST",
         body: formData,
       })
