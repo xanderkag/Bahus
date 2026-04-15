@@ -780,16 +780,9 @@ export function createActions(store, backend = null, authService = null, storage
       }));
     },
     setLoginDraftField({ field }, value) {
-      update((state) => ({
-        ...state,
-        ui: {
-          ...state.ui,
-          loginDraft: {
-            ...state.ui.loginDraft,
-            [field]: value,
-          },
-        },
-      }));
+      const state = store.getState();
+      if (!state.ui.loginDraft) state.ui.loginDraft = {};
+      state.ui.loginDraft[field] = value;
     },
     async signInMaster() {
       if (!authService) return;
@@ -1270,6 +1263,11 @@ export function createActions(store, backend = null, authService = null, storage
       }));
     },
     setNewQuoteDraftField({ field }, value) {
+      if (field === "title" || field === "requestId" || field === "note") {
+        const state = store.getState();
+        if (state.ui.newQuoteDraft) state.ui.newQuoteDraft[field] = value;
+        return;
+      }
       update((state) => ({
         ...state,
         ui: {
@@ -1563,6 +1561,11 @@ export function createActions(store, backend = null, authService = null, storage
       }));
     },
     setUploadDraftField({ field }, value) {
+      if (field === "requestId" || field === "managerNote") {
+        const state = store.getState();
+        if (state.ui.uploadDraft) state.ui.uploadDraft[field] = value;
+        return;
+      }
       update((state) => ({
         ...state,
         ui: {
@@ -1996,6 +1999,13 @@ export function createActions(store, backend = null, authService = null, storage
     },
     setProductField({ productId, field }, value) {
       const numericFields = new Set(["volume_l", "purchase_price", "rrc_min"]);
+      if (field === "manual_normalized_name" || field === "normalization_note" || field === "manual_match_id") {
+        const state = store.getState();
+        if (state.entities.productsById?.[productId]) {
+          state.entities.productsById[productId][field] = value;
+        }
+        return;
+      }
       update((state) => ({
         ...state,
         entities: {
