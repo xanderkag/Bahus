@@ -1388,7 +1388,7 @@ export function createActions(store, backend = null, authService = null, storage
                 {
                   id: makeId("upl"),
                   level: "success",
-                  message: "Для demo файл сохраняется локально в черновике и не блокирует создание КП.",
+                  message: "Файл сохранен локально в черновике. Интеграция Firebase Storage недоступна.",
                 },
               ],
               uploadError: null,
