@@ -1155,22 +1155,45 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 try:
                     with open(draft_path, "r", encoding="utf-8") as f:
                         draft_data = json.load(f)
-                    items_by_id = draft_data.get("itemsById", {})
-                    item_order = draft_data.get("itemOrder", [])
-                    import uuid
                     
-                    for row in rows:
-                        new_id = str(uuid.uuid4())
-                        items_by_id[new_id] = {
-                            "id": new_id,
-                            "original_name": row.get("name", "Unknown item"),
-                            "original_quantity": row.get("quantity", 1),
-                            "note": row.get("note", "")
-                        }
-                        item_order.append(new_id)
-                    
-                    draft_data["itemsById"] = items_by_id
-                    draft_data["itemOrder"] = item_order
+                    # If this is the active draft, let's just create a new structure
+                    # Or append to existing if it's itemsById
+                    if "items" in draft_data and isinstance(draft_data["items"], list):
+                        # Draft might be in the V2 array format if it was saved by frontend
+                        for row in rows:
+                            draft_data["items"].append({
+                                "name": row.get("name", "Unknown item"),
+                                "qty": row.get("qty", 1),
+                                "purchase_price": row.get("purchase_price"),
+                                "rrc_min": row.get("rrc"),
+                                "volume_l": row.get("volume_l"),
+                                "country": row.get("country"),
+                                "category": row.get("category"),
+                                "note": row.get("note", "")
+                            })
+                    else:
+                        items_by_id = draft_data.get("itemsById", {})
+                        item_order = draft_data.get("itemOrder", [])
+                        import uuid
+                        
+                        for row in rows:
+                            new_id = str(uuid.uuid4())
+                            items_by_id[new_id] = {
+                                "id": new_id,
+                                "name": row.get("name", "Unknown item"),
+                                "qty": row.get("qty", 1),
+                                "purchase_price": row.get("purchase_price"),
+                                "rrc_min": row.get("rrc"),
+                                "volume_l": row.get("volume_l"),
+                                "country": row.get("country"),
+                                "category": row.get("category"),
+                                "note": row.get("note", "")
+                            }
+                            item_order.append(new_id)
+                        
+                        draft_data["itemsById"] = items_by_id
+                        draft_data["itemOrder"] = item_order
+
                     # Unset AI status to drop the loader in the UI
                     if "meta" in draft_data:
                         draft_data["meta"]["aiProcessingStatus"] = "done"
