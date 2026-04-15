@@ -29,6 +29,43 @@ function deriveQuoteStatus(meta, items) {
   return "ready";
 }
 
+function deriveQuoteAiState(meta = {}, settings = {}) {
+  const hasInput = Boolean(meta.requestFiles?.length || meta.note);
+  const workflowEndpoint = String(settings.workflow_endpoint || "");
+  const hasRealWorkflowEndpoint = /^https?:\/\//i.test(workflowEndpoint);
+  const hasRemoteFile = Boolean(meta.requestFiles?.some((file) => file?.downloadUrl || file?.storagePath || file?.status === "local"));
+
+  if (!hasInput) {
+    return {
+      status: "idle",
+      note: "",
+      canRun: false,
+    };
+  }
+
+  if (!hasRealWorkflowEndpoint) {
+    return {
+      status: "idle",
+      note: "КП создано. Автообработка ИИ не запущена: webhook n8n для КП пока не настроен.",
+      canRun: false,
+    };
+  }
+
+  if (!hasRemoteFile) {
+    return {
+      status: "idle",
+      note: "КП создано. Автообработка ИИ не запущена: файл пока хранится только локально в черновике.",
+      canRun: false,
+    };
+  }
+
+  return {
+    status: "queued",
+    note: "КП создано. Можно сразу запускать обработку ИИ и отправлять файл в n8n.",
+    canRun: true,
+  };
+}
+
 function isImportProcessing(status) {
   return ["uploaded", "queued", "pending"].includes(status);
 }
@@ -47,7 +84,7 @@ function mapApiImportToEntity(item) {
   };
 }
 
-export function createActions(store, backend = null) {
+export function createActions(store, backend = null, authService = null, storageService = null) {
   function update(updater) {
     store.setState(updater);
   }
@@ -451,6 +488,134 @@ export function createActions(store, backend = null) {
     };
   }
 
+  function dispatchQuoteAiProcessing(quoteIdOverride = null) {
+    const snapshot = store.getState();
+    const targetQuoteId = quoteIdOverride || snapshot.ui.selectedQuoteId;
+    if (!targetQuoteId) return;
+
+    const currentMeta =
+      targetQuoteId === snapshot.ui.selectedQuoteId
+        ? snapshot.quote.meta
+        : snapshot.entities.quotesById?.[targetQuoteId]?.meta;
+
+    if (!currentMeta) return;
+
+    const workflowEndpoint = String(snapshot.settings?.workflow_endpoint || "");
+    const localFile = snapshot.runtime?.quoteRequestFilesByQuoteId?.[targetQuoteId] || null;
+    const aiState = deriveQuoteAiState(
+      {
+        ...currentMeta,
+        requestFiles: [
+          ...((currentMeta.requestFiles || []).filter(Boolean)),
+          ...(localFile ? [{ status: "local" }] : []),
+        ],
+      },
+      snapshot.settings || {},
+    );
+    const hasInput = Boolean(currentMeta.requestFiles?.length || currentMeta.note);
+    if (!hasInput) return;
+
+    if (!aiState.canRun && aiState.note.includes("webhook n8n")) {
+      update((state) => syncSelectedQuoteRecord({
+        ...state,
+        quote: {
+          ...state.quote,
+          meta: {
+            ...getQuoteMeta(state),
+            aiProcessingStatus: "error",
+            aiProcessingNote: aiState.note,
+            aiLastRunAt: new Date().toISOString(),
+          },
+        },
+      }));
+      return;
+    }
+
+    if (!localFile && !currentMeta.requestFiles?.some((file) => file?.downloadUrl || file?.storagePath)) {
+      update((state) => syncSelectedQuoteRecord({
+        ...state,
+        quote: {
+          ...state.quote,
+          meta: {
+            ...getQuoteMeta(state),
+            aiProcessingStatus: "error",
+            aiProcessingNote: "Файл запроса пока только в локальном черновике. Сначала нужен upload в storage или серверный приём файла.",
+            aiLastRunAt: new Date().toISOString(),
+          },
+        },
+      }));
+      return;
+    }
+
+    update((state) => syncSelectedQuoteRecord({
+      ...state,
+      quote: {
+        ...state.quote,
+        meta: {
+          ...getQuoteMeta(state),
+          aiProcessingStatus: "queued",
+          aiProcessingNote: "Отправляем файл и контекст запроса в n8n.",
+          aiLastRunAt: new Date().toISOString(),
+        },
+      },
+    }));
+
+    const formData = new FormData();
+    if (localFile) {
+      formData.append("file", localFile, localFile.name);
+      formData.append("source_file", localFile.name);
+      formData.append("mime_type", localFile.type || "application/octet-stream");
+    }
+    formData.append("quote_id", targetQuoteId);
+    formData.append("quote_number", currentMeta.quoteNumber || "");
+    formData.append("client_name", currentMeta.clientName || "");
+    formData.append("request_title", currentMeta.requestTitle || "");
+    formData.append("context", currentMeta.note || "");
+    formData.append("source", "bahus_quote");
+
+    fetch(workflowEndpoint, {
+      method: "POST",
+      body: formData,
+    })
+      .then(async (response) => {
+        let payload = null;
+        try {
+          payload = await response.json();
+        } catch {
+          payload = null;
+        }
+        if (!response.ok) {
+          throw new Error(payload?.message || `n8n вернул ${response.status}`);
+        }
+        update((state) => syncSelectedQuoteRecord({
+          ...state,
+          quote: {
+            ...state.quote,
+            meta: {
+              ...getQuoteMeta(state),
+              aiProcessingStatus: "ready",
+              aiProcessingNote: "Файл и контекст отправлены в n8n. Если дальше есть callback, можно привязать следующий шаг к Bahus.",
+              aiLastRunAt: getQuoteMeta(state).aiLastRunAt || new Date().toISOString(),
+            },
+          },
+        }));
+      })
+      .catch((error) => {
+        update((state) => syncSelectedQuoteRecord({
+          ...state,
+          quote: {
+            ...state.quote,
+            meta: {
+              ...getQuoteMeta(state),
+              aiProcessingStatus: "error",
+              aiProcessingNote: error?.message || "Не удалось отправить запрос в n8n.",
+              aiLastRunAt: getQuoteMeta(state).aiLastRunAt || new Date().toISOString(),
+            },
+          },
+        }));
+      });
+  }
+
   return {
     async setView({ view }) {
       update((state) => ({ ...state, ui: { ...state.ui, activeView: view } }));
@@ -544,6 +709,114 @@ export function createActions(store, backend = null) {
           ...state.settings,
           theme: nextTheme,
         },
+      }));
+    },
+    handleAuthStateChange({ user }) {
+      const state = store.getState();
+      const allowedUser = user
+        ? (state.settings.users || []).find(
+            (item) => String(item.email || "").toLowerCase() === String(user.email || "").toLowerCase(),
+          )
+        : null;
+
+      if (user && !allowedUser) {
+        update((current) => ({
+          ...current,
+          auth: {
+            ...current.auth,
+            status: "ready",
+            currentUser: null,
+            error: "Для этого Google-аккаунта нет доступа в Bahus.",
+          },
+        }));
+        if (authService) {
+          void authService.signOut();
+        }
+        return;
+      }
+
+      update((current) => ({
+        ...current,
+        settings: {
+          ...current.settings,
+          users: (current.settings.users || []).map((item) =>
+            !allowedUser || item.id !== allowedUser.id
+              ? item
+              : { ...item, status: "Активен" },
+          ),
+        },
+        auth: {
+          ...current.auth,
+          status: "ready",
+          currentUser:
+            user && allowedUser
+              ? {
+                  ...user,
+                  role: allowedUser.role,
+                  scope: allowedUser.scope,
+                  userId: allowedUser.id,
+                }
+              : null,
+          error: user ? null : current.auth?.error || null,
+        },
+        ui:
+          user && allowedUser
+            ? {
+                ...current.ui,
+                role: allowedUser.role === "Администратор" ? "admin" : "manager",
+                scope: allowedUser.scope === "Все данные" ? "all" : "my",
+              }
+            : current.ui,
+      }));
+    },
+    setAuthStatus({ status, error = null }) {
+      update((state) => ({
+        ...state,
+        auth: {
+          ...state.auth,
+          status,
+          error,
+        },
+      }));
+    },
+    setLoginDraftField({ field }, value) {
+      update((state) => ({
+        ...state,
+        ui: {
+          ...state.ui,
+          loginDraft: {
+            ...state.ui.loginDraft,
+            [field]: value,
+          },
+        },
+      }));
+    },
+    async signInMaster() {
+      if (!authService) return;
+      const { loginDraft } = store.getState().ui;
+      update((state) => ({
+        ...state,
+        auth: { ...state.auth, status: "authenticating", error: null },
+      }));
+      try {
+        await authService.signIn(loginDraft.username, loginDraft.password);
+      } catch (error) {
+        update((state) => ({
+          ...state,
+          auth: {
+            ...state.auth,
+            status: "ready",
+            error: error?.message || "Не удалось войти в систему",
+          },
+        }));
+      }
+    },
+    async signOutMaster() {
+      if (!authService) return;
+      await authService.signOut();
+      update((state) => ({
+        ...state,
+        auth: { ...state.auth, status: "ready", currentUser: null, error: null },
       }));
     },
     addSettingsUser() {
@@ -963,6 +1236,11 @@ export function createActions(store, backend = null) {
             title: "",
             note: "",
             requestFiles: [],
+            uploadStatus: "idle",
+            uploadProgress: 0,
+            uploadStage: "",
+            uploadLog: [],
+            uploadError: null,
           },
         },
       }));
@@ -1003,28 +1281,187 @@ export function createActions(store, backend = null) {
         },
       }));
     },
-    setNewQuoteRequestFiles(_dataset, _value, event) {
-      const files = Array.from(event?.target?.files || []).map((file) => ({
-        name: file.name,
-        size: file.size,
-        type: file.type || "unknown",
-      }));
+    async setNewQuoteRequestFiles(_dataset, _value, event) {
+      const [selectedFile] = Array.from(event?.target?.files || []);
+      if (!selectedFile) return;
+      const currentState = store.getState();
+      const useStorageForQuoteRequest = Boolean(currentState.settings?.quote_request_storage_enabled);
+
       update((state) => ({
         ...state,
         ui: {
           ...state.ui,
           newQuoteDraft: {
             ...state.ui.newQuoteDraft,
-            requestFiles: files,
+            requestFiles: [
+              {
+                id: makeId("rqf"),
+                name: selectedFile.name,
+                size: selectedFile.size,
+                type: selectedFile.type || "unknown",
+                status: "uploading",
+              },
+            ],
+            uploadStatus: "uploading",
+            uploadProgress: 0,
+            uploadStage: "Подготавливаем файл",
+            uploadLog: [
+              {
+                id: makeId("upl"),
+                level: "info",
+                message: "Файл выбран и поставлен в очередь на загрузку.",
+              },
+            ],
+            uploadError: null,
           },
         },
       }));
+
+      if (!storageService || !useStorageForQuoteRequest) {
+        const file = {
+          id: makeId("rqf"),
+          name: selectedFile.name,
+          size: selectedFile.size,
+          type: selectedFile.type || "unknown",
+          status: "local",
+        };
+        update((state) => ({
+          ...state,
+          ui: {
+            ...state.ui,
+            newQuoteDraft: {
+              ...state.ui.newQuoteDraft,
+              requestFiles: [file],
+              uploadStatus: "ready",
+              uploadProgress: 100,
+              uploadStage: "Файл добавлен в локальный черновик",
+              uploadLog: [
+                {
+                  id: makeId("upl"),
+                  level: "success",
+                  message: "Для demo файл сохраняется локально в черновике и не блокирует создание КП.",
+                },
+              ],
+              uploadError: null,
+            },
+          },
+          runtime: {
+            ...state.runtime,
+            quoteRequestDraftFile: selectedFile,
+          },
+        }));
+        return;
+      }
+
+      try {
+        const uploadedFiles = await storageService.uploadRequestFiles([selectedFile], {
+          quoteDraftId: makeId("quote_request"),
+          uploadedBy: currentState.auth?.currentUser?.email || "unknown",
+          onProgress: ({ progress, state }) => {
+            update((current) => ({
+              ...current,
+              ui: {
+                ...current.ui,
+                newQuoteDraft: {
+                  ...current.ui.newQuoteDraft,
+                  uploadProgress: progress,
+                  uploadStage:
+                    state === "running"
+                      ? `Загружаем файл в storage: ${progress}%`
+                      : "Файл отправлен, ждём подтверждение хранилища",
+                  uploadLog: [
+                    {
+                      id: makeId("upl"),
+                      level: "info",
+                      message:
+                        progress >= 100
+                          ? "Байты файла загружены, получаем ссылку доступа."
+                          : `Передано ${progress}% файла в Firebase Storage.`,
+                    },
+                  ],
+                },
+              },
+            }));
+          },
+        });
+
+        update((current) => ({
+          ...current,
+          ui: {
+            ...current.ui,
+            newQuoteDraft: {
+              ...current.ui.newQuoteDraft,
+              requestFiles: uploadedFiles.slice(0, 1),
+              uploadStatus: "ready",
+              uploadProgress: 100,
+              uploadStage: "Файл загружен и готов к отправке в n8n",
+              uploadLog: [
+                {
+                  id: makeId("upl"),
+                  level: "success",
+                  message: "Файл загружен в Firebase Storage, ссылка получена.",
+                },
+              ],
+              uploadError: null,
+            },
+          },
+        }));
+      } catch (error) {
+        const fallbackFile = {
+          id: makeId("rqf"),
+          name: selectedFile.name,
+          size: selectedFile.size,
+          type: selectedFile.type || "unknown",
+          status: "local",
+        };
+        update((state) => ({
+          ...state,
+          ui: {
+            ...state.ui,
+            newQuoteDraft: {
+              ...state.ui.newQuoteDraft,
+              requestFiles: [fallbackFile],
+              uploadStatus: "ready",
+              uploadProgress: 100,
+              uploadStage: "Файл сохранён в локальном черновике",
+              uploadLog: [
+                {
+                  id: makeId("upl"),
+                  level: "error",
+                  message: error?.message || "Firebase Storage не ответил, файл оставлен в локальном черновике.",
+                },
+                {
+                  id: makeId("upl"),
+                  level: "info",
+                  message: "Можно продолжать работу и создать КП. Позже подключим отправку этого файла в n8n напрямую или через storage.",
+                },
+              ],
+              uploadError: error?.message || "Storage недоступен, файл сохранён только в черновике.",
+            },
+          },
+          runtime: {
+            ...state.runtime,
+            quoteRequestDraftFile: selectedFile,
+          },
+        }));
+      }
     },
     createNewQuote() {
+      let createdQuoteId = null;
+      let shouldAutoRunAi = false;
       update((state) => {
         const draft = state.ui.newQuoteDraft;
         const client = state.entities.clientsById?.[draft.clientId] || null;
         const quoteId = makeId("qt");
+        const aiState = deriveQuoteAiState(
+          {
+            requestFiles: draft.requestFiles || [],
+            note: draft.note || "",
+          },
+          state.settings || {},
+        );
+        createdQuoteId = quoteId;
+        shouldAutoRunAi = aiState.canRun;
         const nextQuote = {
           itemOrder: [],
           itemsById: {},
@@ -1038,6 +1475,9 @@ export function createActions(store, backend = null) {
             quoteDate: toInputDate(),
             note: draft.note || "",
             mode: "internal",
+            aiProcessingStatus: aiState.status,
+            aiProcessingNote: aiState.note,
+            aiLastRunAt: aiState.canRun ? new Date().toISOString() : null,
           },
         };
         const draftState = {
@@ -1064,6 +1504,16 @@ export function createActions(store, backend = null) {
           quote: {
             ...nextQuote,
           },
+          runtime: {
+            ...state.runtime,
+            quoteRequestFilesByQuoteId: {
+              ...(state.runtime.quoteRequestFilesByQuoteId || {}),
+              ...(state.runtime.quoteRequestDraftFile
+                ? { [quoteId]: state.runtime.quoteRequestDraftFile }
+                : {}),
+            },
+            quoteRequestDraftFile: null,
+          },
           ui: {
             ...state.ui,
             activeView: "quote",
@@ -1078,10 +1528,22 @@ export function createActions(store, backend = null) {
               title: "",
               note: "",
               requestFiles: [],
+              uploadStatus: "idle",
+              uploadProgress: 0,
+              uploadStage: "",
+              uploadLog: [],
+              uploadError: null,
             },
           },
         };
       });
+      if (shouldAutoRunAi && createdQuoteId) {
+        setTimeout(() => {
+          const current = store.getState();
+          if (current.ui.selectedQuoteId !== createdQuoteId) return;
+          store.actions.runQuoteAiProcessing();
+        }, 0);
+      }
     },
     openUploadFilesModal() {
       update((state) => ({
@@ -1113,11 +1575,7 @@ export function createActions(store, backend = null) {
       }));
     },
     setUploadDraftFiles(_dataset, _value, event) {
-      const files = Array.from(event?.target?.files || []).map((file) => ({
-        name: file.name,
-        size: file.size,
-        type: file.type || "unknown",
-      }));
+      const files = Array.from(event?.target?.files || []);
       update((state) => ({
         ...state,
         ui: {
@@ -1130,11 +1588,7 @@ export function createActions(store, backend = null) {
       }));
     },
     setUploadDraftAttachments(_dataset, _value, event) {
-      const attachments = Array.from(event?.target?.files || []).map((file) => ({
-        name: file.name,
-        size: file.size,
-        type: file.type || "unknown",
-      }));
+      const attachments = Array.from(event?.target?.files || []);
       update((state) => ({
         ...state,
         ui: {
@@ -1166,29 +1620,19 @@ export function createActions(store, backend = null) {
         try {
           const createdImports = [];
           for (const file of files) {
-            const payload = {
-              supplier_id: supplierId,
-              supplier_name: supplier.name,
-              document_type: draft.documentType || "price_list",
-              request_ref: draft.requestId || "",
-              request_title: draft.requestId ? `Запрос ${draft.requestId}` : "",
-              manager_note: draft.managerNote || "",
-              files: [
-                {
-                  file_name: file.name,
-                  mime_type: file.type || "application/octet-stream",
-                  size_bytes: file.size,
-                  file_kind: "price",
-                },
-              ],
-              attachments: (draft.attachments || []).map((attachment) => ({
-                file_name: attachment.name,
-                mime_type: attachment.type || "application/octet-stream",
-                size_bytes: attachment.size,
-                file_kind: "attachment",
-              })),
-            };
-            const response = await backend.createImport(payload);
+            const formData = new FormData();
+            formData.append("file", file, file.name || "import_file");
+            formData.append("supplier_id", supplierId);
+            formData.append("supplier_name", supplier.name);
+            formData.append("document_type", draft.documentType || "price_list");
+            formData.append("request_ref", draft.requestId || "");
+            formData.append("manager_note", draft.managerNote || "");
+            
+            (draft.attachments || []).forEach((attachment, index) => {
+              formData.append(`attachment_${index}`, attachment, attachment.name);
+            });
+
+            const response = await backend.createImport(formData);
             const createdImportId = response.item?.id;
             if (!createdImportId) continue;
             await backend.dispatchImport(createdImportId, { source: "ui" });
@@ -1291,14 +1735,21 @@ export function createActions(store, backend = null) {
         ui: {
           ...state.ui,
           modal: null,
+          rowDetailEditMode: false,
           selectedRowDetailId: state.ui.modal === "row-details" ? null : state.ui.selectedRowDetailId,
         },
+      }));
+    },
+    toggleRowDetailEditMode() {
+      update((state) => ({
+        ...state,
+        ui: { ...state.ui, rowDetailEditMode: !state.ui.rowDetailEditMode },
       }));
     },
     openRowDetails({ productId }) {
       update((state) => ({
         ...state,
-        ui: { ...state.ui, selectedRowDetailId: productId, modal: "row-details" },
+        ui: { ...state.ui, selectedRowDetailId: productId, modal: "row-details", rowDetailEditMode: false },
       }));
     },
     async markSelectedChecked() {
@@ -1544,6 +1995,7 @@ export function createActions(store, backend = null) {
       } catch {}
     },
     setProductField({ productId, field }, value) {
+      const numericFields = new Set(["volume_l", "purchase_price", "rrc_min"]);
       update((state) => ({
         ...state,
         entities: {
@@ -1552,7 +2004,15 @@ export function createActions(store, backend = null) {
             ...state.entities.productsById,
             [productId]: {
               ...state.entities.productsById[productId],
-              [field]: value,
+              [field]:
+                numericFields.has(field)
+                  ? String(value).trim() === ""
+                    ? null
+                    : asNumber(value, null)
+                  : value,
+              ...(field === "review_status"
+                ? { excluded: value === "excluded" }
+                : {}),
             },
           },
         },
@@ -1621,6 +2081,133 @@ export function createActions(store, backend = null) {
           },
         },
       }));
+    },
+    runQuoteAiProcessing() {
+      const snapshot = store.getState();
+      const hasInput = Boolean(snapshot.quote.meta?.requestFiles?.length || snapshot.quote.meta?.note);
+      const workflowEndpoint = String(snapshot.settings?.workflow_endpoint || "");
+      const quoteId = snapshot.ui.selectedQuoteId;
+      const localFile = quoteId ? snapshot.runtime?.quoteRequestFilesByQuoteId?.[quoteId] : null;
+      const callbackBaseUrl = String(snapshot.runtime?.apiBaseUrl || `${window.location.origin}/api`).replace(/\/$/, "");
+      const aiState = deriveQuoteAiState(
+        {
+          ...(snapshot.quote.meta || {}),
+          requestFiles: [
+            ...((snapshot.quote.meta?.requestFiles || []).filter(Boolean)),
+            ...(localFile ? [{ status: "local" }] : []),
+          ],
+        },
+        snapshot.settings || {},
+      );
+      if (!hasInput) return;
+      if (!aiState.canRun && aiState.note.includes("webhook n8n")) {
+        update((state) => syncSelectedQuoteRecord({
+          ...state,
+          quote: {
+            ...state.quote,
+            meta: {
+              ...getQuoteMeta(state),
+              aiProcessingStatus: "error",
+              aiProcessingNote: aiState.note,
+              aiLastRunAt: new Date().toISOString(),
+            },
+          },
+        }));
+        return;
+      }
+      if (!localFile && !snapshot.quote.meta?.requestFiles?.some((file) => file?.downloadUrl || file?.storagePath || file?.status === "local")) {
+        update((state) => syncSelectedQuoteRecord({
+          ...state,
+          quote: {
+            ...state.quote,
+            meta: {
+              ...getQuoteMeta(state),
+              aiProcessingStatus: "error",
+              aiProcessingNote: aiState.note,
+              aiLastRunAt: new Date().toISOString(),
+            },
+          },
+        }));
+        return;
+      }
+
+      update((state) => syncSelectedQuoteRecord({
+        ...state,
+        quote: {
+          ...state.quote,
+          meta: {
+            ...getQuoteMeta(state),
+            aiProcessingStatus: "queued",
+            aiProcessingNote: "Отправляем файл и контекст запроса в n8n.",
+            aiLastRunAt: new Date().toISOString(),
+          },
+        },
+      }));
+
+      const formData = new FormData();
+      if (localFile) {
+        formData.append("file", localFile, localFile.name);
+        formData.append("source_file", localFile.name);
+        formData.append("mime_type", localFile.type || "application/octet-stream");
+      }
+      formData.append("quote_id", quoteId || "");
+      formData.append("quote_number", snapshot.quote.meta?.quoteNumber || "");
+      formData.append("client_name", snapshot.quote.meta?.clientName || "");
+      formData.append("request_title", snapshot.quote.meta?.requestTitle || "");
+      formData.append("context", snapshot.quote.meta?.note || "");
+      formData.append("source", "bahus_quote");
+      formData.append("callbackSuccessUrl", `${callbackBaseUrl}/webhooks/n8n/quote-result`);
+      formData.append("callbackFailedUrl", `${callbackBaseUrl}/webhooks/n8n/quote-failed`);
+
+      fetch(workflowEndpoint, {
+        method: "POST",
+        body: formData,
+      })
+        .then(async (response) => {
+          let payload = null;
+          const responseText = await response.text();
+          try {
+            payload = responseText ? JSON.parse(responseText) : null;
+          } catch {
+            payload = responseText || null;
+          }
+          if (!response.ok) {
+            throw new Error(
+              (payload && typeof payload === "object" ? payload?.message : "") ||
+                (typeof payload === "string" ? payload.slice(0, 240) : "") ||
+                `n8n вернул ${response.status}`,
+            );
+          }
+          update((state) => syncSelectedQuoteRecord({
+            ...state,
+            quote: {
+              ...state.quote,
+              meta: {
+                ...getQuoteMeta(state),
+                aiProcessingStatus: "ready",
+                aiProcessingNote: "Файл и контекст отправлены в n8n. Дальше ждём обработку со стороны workflow.",
+                aiLastRunAt: getQuoteMeta(state).aiLastRunAt || new Date().toISOString(),
+              },
+            },
+          }));
+        })
+        .catch((error) => {
+          const message = String(error?.message || "Не удалось отправить запрос в n8n.");
+          update((state) => syncSelectedQuoteRecord({
+            ...state,
+            quote: {
+              ...state.quote,
+              meta: {
+                ...getQuoteMeta(state),
+                aiProcessingStatus: "error",
+                aiProcessingNote: /failed to fetch/i.test(message)
+                  ? "Не удалось достучаться до n8n. Скорее всего, webhook не отдаёт CORS для браузера или недоступен извне."
+                  : message,
+                aiLastRunAt: getQuoteMeta(state).aiLastRunAt || new Date().toISOString(),
+              },
+            },
+          }));
+        });
     },
     toggleQuoteMode({ mode }) {
       update((state) => syncSelectedQuoteRecord({

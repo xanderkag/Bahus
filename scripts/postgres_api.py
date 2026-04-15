@@ -3,7 +3,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
+import time
+import traceback
+import threading
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
@@ -11,8 +15,17 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
-from urllib.request import Request, urlopen
 from uuid import UUID
+import uuid
+
+import requests
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger("bakhus-api")
 
 try:
     import psycopg
@@ -25,6 +38,8 @@ except ImportError as exc:  # pragma: no cover - runtime-only guard
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+UPLOADS_DIR = PROJECT_ROOT / ".local" / "uploads"
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def parse_args() -> argparse.Namespace:
@@ -102,7 +117,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
     config = build_config()
 
     def log_message(self, fmt: str, *args) -> None:
-        print(f"[postgres-api] {self.address_string()} - {fmt % args}")
+        logger.info(f"{self.address_string()} - {fmt % args}")
 
     def end_headers(self) -> None:
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -115,6 +130,16 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:  # noqa: N802
+        try:
+            self._do_GET_internal()
+        except Exception:
+            logger.error(f"Error handling GET {self.path}:\n{traceback.format_exc()}")
+            self.respond_json(
+                {"error": "Internal Server Error", "detail": traceback.format_exc()},
+                status=HTTPStatus.INTERNAL_SERVER_ERROR
+            )
+
+    def _do_GET_internal(self) -> None:
         parsed = urlparse(self.path)
         route = parsed.path
         query = parse_qs(parsed.query)
@@ -137,6 +162,16 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         return self.respond_json({"error": "Not found", "path": route}, status=HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:  # noqa: N802
+        try:
+            self._do_POST_internal()
+        except Exception:
+            logger.error(f"Error handling POST {self.path}:\n{traceback.format_exc()}")
+            self.respond_json(
+                {"error": "Internal Server Error", "detail": traceback.format_exc()},
+                status=HTTPStatus.INTERNAL_SERVER_ERROR
+            )
+
+    def _do_POST_internal(self) -> None:
         parsed = urlparse(self.path)
         route = parsed.path
 
@@ -165,7 +200,16 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def db(self):
-        return psycopg.connect(self.config.db_dsn, row_factory=dict_row)
+        retries = 3
+        last_exc = None
+        for i in range(retries):
+            try:
+                return psycopg.connect(self.config.db_dsn, row_factory=dict_row)
+            except psycopg.Error as e:
+                last_exc = e
+                logger.warning(f"Database connection attempt {i+1} failed: {e}. Retrying in 2s...")
+                time.sleep(2)
+        raise last_exc
 
     def require_import(self, conn, import_id: str) -> dict | None:
         item = conn.execute(
@@ -553,8 +597,42 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         return self.respond_json({"item": status})
 
     def handle_create_import(self) -> None:
-        payload = self.read_json_body()
-        files = payload.get("files") or []
+        content_type = self.headers.get("Content-Type", "")
+        if "multipart/form-data" in content_type:
+            import email.parser
+            content_length = int(self.headers.get("Content-Length"))
+            body = self.rfile.read(content_length)
+            
+            msg_bytes = b"Content-Type: " + content_type.encode() + b"\r\n\r\n" + body
+            container = email.parser.BytesParser().parsebytes(msg_bytes)
+            
+            payload = {}
+            files = []
+            for part in container.get_payload():
+                if isinstance(part, str): continue
+                name = part.get_param("name", header="content-disposition")
+                filename = part.get_filename()
+                if filename:
+                    storage_filename = f"{uuid.uuid4()}_{filename}"
+                    storage_path = UPLOADS_DIR / storage_filename
+                    storage_path.write_bytes(part.get_payload(decode=True))
+                    public_path = str(storage_path)
+                    files.append({
+                        "file_name": filename,
+                        "mime_type": part.get_content_type(),
+                        "size_bytes": len(part.get_payload(decode=True)),
+                        "storage_path": public_path,
+                        "file_kind": "price" if name == "file" else "attachment",
+                        "original_name": filename
+                    })
+                else:
+                    payload[name] = part.get_payload(decode=True).decode("utf-8")
+            payload["files"] = files
+            payload["attachments"] = [f for f in files if f["file_kind"] == "attachment"]
+        else:
+            payload = self.read_json_body()
+            files = payload.get("files") or []
+
         if not files:
             return self.respond_json({"error": "files is required"}, status=HTTPStatus.BAD_REQUEST)
 
@@ -643,36 +721,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                     ),
                 )
 
-            for attachment in payload.get("attachments") or []:
-                original_name = attachment.get("file_name") or attachment.get("original_name")
-                conn.execute(
-                    """
-                    insert into import_file (
-                      import_batch_id,
-                      original_name,
-                      storage_path,
-                      mime_type,
-                      size_bytes,
-                      file_kind,
-                      note,
-                      processing_status,
-                      processing_pipeline
-                    )
-                    values (%s, %s, %s, %s, %s, %s, %s, 'uploaded', %s)
-                    """,
-                    (
-                        import_id,
-                        original_name,
-                        attachment.get("storage_path") or f"/uploads/demo/{original_name}",
-                        attachment.get("mime_type"),
-                        attachment.get("size_bytes"),
-                        attachment.get("file_kind", "attachment"),
-                        attachment.get("note"),
-                        infer_pipeline(infer_source_format(original_name or "", attachment.get("mime_type"))),
-                    ),
-                )
             conn.commit()
-
             batch_row = self.require_import(conn, import_id)
             item = self.serialize_import(conn, batch_row)
 
@@ -680,16 +729,53 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
 
     def dispatch_to_n8n(self, dispatch_payload: dict) -> dict | None:
         if not self.config.n8n_webhook_url:
+            logger.warning("N8N_IMPORT_WEBHOOK_URL is not configured")
             return None
-        request = Request(
-            self.config.n8n_webhook_url,
-            data=json.dumps(dispatch_payload, ensure_ascii=False, default=json_default).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urlopen(request, timeout=10) as response:
-            raw = response.read() or b"{}"
-        return json.loads(raw.decode("utf-8"))
+
+        # Prepare payload and files for 'requests'
+        data = {k: v for k, v in dispatch_payload.items() if k != "file_binary"}
+        files = None
+
+        file_info = dispatch_payload.get("file_binary")
+        if file_info and file_info.get("path") and os.path.exists(file_info["path"]):
+            filename = file_info["filename"]
+            mime_type = file_info.get("mime_type", "application/octet-stream")
+            # Open file specifically for this request
+            files = {
+                'file': (filename, open(file_info["path"], 'rb'), mime_type)
+            }
+
+        try:
+            logger.info(f"Dispatching to n8n: {self.config.n8n_webhook_url}")
+            # We use PUBLIC_API_URL context (hardcoded logic in original script preserved for Origin)
+            headers = {
+                'User-Agent': 'Bakhus-API/1.0',
+            }
+            
+            response = requests.post(
+                self.config.n8n_webhook_url,
+                data=data,
+                files=files,
+                headers=headers,
+                timeout=30
+            )
+            response.raise_for_status()
+            
+            # Close file if opened
+            if files:
+                files['file'][1].close()
+                
+            result = response.json() if response.text else {}
+            logger.info(f"n8n response: {response.status_code}")
+            return result
+            
+        except requests.exceptions.RequestException as e:
+            if files:
+                files['file'][1].close()
+            logger.error(f"n8n dispatch failed: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                logger.error(f"n8n response detail: {e.response.text}")
+            return None
 
     def handle_dispatch_import(self, import_id: str) -> None:
         payload = self.read_json_body()
@@ -712,7 +798,14 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 "storage_path": price_file["storage_path"],
                 "source_file": price_file["file_name"],
                 "requested_pipeline": price_file["processing_pipeline"] or infer_pipeline(price_file["source_format"]),
-                "force": bool(payload.get("force", False)),
+                                "force": bool(payload.get("force", False)),
+                "callbackSuccessUrl": f"{os.getenv('PUBLIC_API_URL', 'http://127.0.0.1:8078')}/api/webhooks/n8n/import-result",
+                "callbackFailedUrl": f"{os.getenv('PUBLIC_API_URL', 'http://127.0.0.1:8078')}/api/webhooks/n8n/import-failed",
+                "file_binary": {
+                    "path": price_file["storage_path"],
+                    "filename": price_file["file_name"],
+                    "mime_type": price_file["mime_type"],
+                }
             }
             job_row = conn.execute(
                 """
@@ -1011,14 +1104,45 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         return self.respond_json({"item": refreshed, "error": error_text})
 
 
+def cleanup_worker():
+    """Background thread to delete files in UPLOADS_DIR older than 7 days."""
+    logger.info("Cleanup thread started.")
+    while True:
+        try:
+            now = time.time()
+            cutoff = now - (7 * 24 * 3600)  # 7 days
+            deleted_count = 0
+            if UPLOADS_DIR.exists():
+                for f in UPLOADS_DIR.iterdir():
+                    if f.is_file():
+                        try:
+                            if f.stat().st_mtime < cutoff:
+                                f.unlink()
+                                deleted_count += 1
+                        except Exception as e:
+                            logger.error(f"Failed to delete old file {f}: {e}")
+            if deleted_count > 0:
+                logger.info(f"Cleanup thread: deleted {deleted_count} files older than 7 days.")
+        except Exception as e:
+            logger.error(f"Error in cleanup thread: {e}")
+            
+        # Check every hour
+        time.sleep(3600)
+
+
 def main() -> None:
     args = parse_args()
     server = ThreadingHTTPServer((args.host, args.port), PostgresApiHandler)
-    print(f"Bakhus PostgreSQL API running at http://{args.host}:{args.port}")
+    logger.info(f"Bakhus PostgreSQL API running at http://{args.host}:{args.port}")
+    
+    # Start the background cleanup thread
+    cleanup_thread = threading.Thread(target=cleanup_worker, daemon=True)
+    cleanup_thread.start()
+
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nShutting down PostgreSQL API")
+        logger.info("Shutting down PostgreSQL API")
 
 
 if __name__ == "__main__":

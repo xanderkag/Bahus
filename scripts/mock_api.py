@@ -9,17 +9,26 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+from email.message import Message
+from email.parser import BytesParser
+import urllib.request
+import urllib.parse
+import uuid
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_FILE = PROJECT_ROOT / "src" / "data" / "demo-imports.json"
 DEFAULT_PUBLIC_API_BASE = os.getenv("PUBLIC_API_BASE_URL", "http://127.0.0.1:8079/api")
+DEFAULT_N8N_URL = os.getenv("N8N_WORKFLOW_URL", "https://n8n.chevich.com/webhook/bakhus-pdf-import")
+UPLOADS_DIR = PROJECT_ROOT / ".local" / "uploads"
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Bakhus Assistant mock API")
     parser.add_argument("--host", default=os.getenv("MOCK_API_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.getenv("MOCK_API_PORT", "8079")))
+    parser.add_argument("--n8n-url", default=DEFAULT_N8N_URL)
     return parser.parse_args()
 
 
@@ -51,6 +60,14 @@ def rebuild_cache_from_imports(imports: list[dict]) -> dict:
         "catalog_matches": build_catalog(products),
     }
     return cache
+
+
+def save_data_cache(cache: dict) -> None:
+    try:
+        DATA_FILE.write_text(json.dumps(cache["imports"], ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"[mock-api] Saved {len(cache['imports'])} imports to {DATA_FILE.name}")
+    except Exception as e:
+        print(f"[mock-api] Failed to save data: {e}")
 
 
 def now_iso() -> str:
@@ -222,6 +239,7 @@ class MockApiHandler(BaseHTTPRequestHandler):
         }
         for item in data_cache["imports"]
     }
+    uploaded_files = {}  # storage_path -> full_path
     jobs = [
         {"id": "job_parse_imp_001", "type": "parse", "status": "done", "target": "imp_001", "updated_at": "2026-04-04T12:10:00Z"},
         {"id": "job_normalize_imp_001", "type": "normalize", "status": "queued", "target": "imp_001", "updated_at": "2026-04-04T12:12:00Z"},
@@ -283,6 +301,10 @@ class MockApiHandler(BaseHTTPRequestHandler):
             return self.handle_import_result()
         if parsed.path == "/api/webhooks/n8n/import-failed":
             return self.handle_import_failed()
+        if parsed.path == "/api/webhooks/n8n/quote-result":
+            return self.handle_quote_result()
+        if parsed.path == "/api/webhooks/n8n/quote-failed":
+            return self.handle_quote_failed()
         if parsed.path == "/api/quote-draft":
             return self.save_quote_draft()
         if parsed.path == "/api/jobs/trigger":
@@ -399,7 +421,50 @@ class MockApiHandler(BaseHTTPRequestHandler):
         MockApiHandler.data_cache = rebuild_cache_from_imports(self.data_cache["imports"])
 
     def create_import(self) -> None:
+        content_type = self.headers.get("Content-Type", "")
+        if "multipart/form-data" in content_type:
+            return self.create_import_multipart()
+        
         payload = self.read_json_body()
+        return self.create_import_json(payload)
+
+    def create_import_multipart(self) -> None:
+        boundary = self.headers.get_boundary().encode()
+        content_length = int(self.headers.get("Content-Length"))
+        body = self.rfile.read(content_length)
+        
+        container = Message()
+        container.set_type("multipart/form-data")
+        container.set_param("boundary", boundary.decode())
+        container.set_payload(body)
+        
+        parts = {}
+        files = []
+        for part in container.get_payload():
+            name = part.get_param("name", header="content-disposition")
+            filename = part.get_filename()
+            if filename:
+                storage_filename = f"{uuid.uuid4()}_{filename}"
+                storage_path = UPLOADS_DIR / storage_filename
+                storage_path.write_bytes(part.get_payload(decode=True))
+                public_path = f"/uploads/{storage_filename}"
+                MockApiHandler.uploaded_files[public_path] = str(storage_path)
+                files.append({
+                    "file_name": filename,
+                    "mime_type": part.get_content_type(),
+                    "size_bytes": len(part.get_payload(decode=True)),
+                    "storage_path": public_path,
+                })
+            else:
+                parts[name] = part.get_payload(decode=True).decode("utf-8")
+        
+        payload = {
+            **parts,
+            "files": files,
+        }
+        return self.create_import_json(payload)
+
+    def create_import_json(self, payload: dict) -> None:
         files = payload.get("files") or []
         if not files:
             return self.respond_json({"error": "files is required"}, status=HTTPStatus.BAD_REQUEST)
@@ -435,7 +500,7 @@ class MockApiHandler(BaseHTTPRequestHandler):
                 "id": supplier_id,
                 "name": supplier_name,
                 "contract_type": payload.get("contract_type") or infer_document_type(source_format, payload.get("document_type")),
-                "vat_included": bool(payload.get("vat_included", True)),
+                "vat_included": payload.get("vat_included") == "true" if isinstance(payload.get("vat_included"), str) else bool(payload.get("vat_included", True)),
             },
             "created_by": payload.get("created_by", "manager@bakhus"),
             "source": payload.get("source", "Web-интерфейс"),
@@ -448,6 +513,7 @@ class MockApiHandler(BaseHTTPRequestHandler):
 
         self.data_cache["imports"].insert(0, import_item)
         self.rebuild_data_cache()
+        save_data_cache(self.data_cache)
         MockApiHandler.import_processing[import_id] = {
             "import_id": import_id,
             "status": "uploaded",
@@ -458,6 +524,7 @@ class MockApiHandler(BaseHTTPRequestHandler):
                     "file_kind": main_file.get("file_kind", "price"),
                     "mime_type": main_file.get("mime_type", "application/octet-stream"),
                     "source_format": source_format,
+                    "storage_path": main_file.get("storage_path"),
                     "processing_status": "uploaded",
                     "processing_pipeline": infer_pipeline(source_format),
                 },
@@ -539,6 +606,58 @@ class MockApiHandler(BaseHTTPRequestHandler):
         }
         if price_file:
             price_file["mime_type"] = price_file.get("mime_type") or "application/octet-stream"
+        
+        # Trigger n8n
+        n8n_url = os.getenv("N8N_WORKFLOW_URL", DEFAULT_N8N_URL)
+        print(f"[mock-api] Dispatching to n8n: {n8n_url}")
+        
+        try:
+            boundary = f"BahusBoundary{uuid.uuid4().hex}"
+            parts = []
+            
+            # File part
+            storage_path = price_file.get("storage_path")
+            if storage_path and storage_path in MockApiHandler.uploaded_files:
+                file_path = MockApiHandler.uploaded_files[storage_path]
+                file_content = Path(file_path).read_bytes()
+                parts.append(f"--{boundary}")
+                parts.append(f'Content-Disposition: form-data; name="file"; filename="{price_file["file_name"]}"')
+                parts.append(f'Content-Type: {price_file["mime_type"]}')
+                parts.append("")
+                parts.append(file_content)
+            
+            # Metadata parts
+            for key, value in dispatch_payload.items():
+                if isinstance(value, dict):
+                    value = json.dumps(value)
+                parts.append(f"--{boundary}")
+                parts.append(f'Content-Disposition: form-data; name="{key}"')
+                parts.append("")
+                parts.append(str(value))
+            
+            parts.append(f"--{boundary}--")
+            parts.append("")
+            
+            # Construct body
+            body = b""
+            for p in parts:
+                if isinstance(p, str):
+                    body += p.encode("utf-8") + b"\r\n"
+                else:
+                    body += p + b"\r\n"
+            
+            req = urllib.request.Request(n8n_url, data=body)
+            req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+            
+            with urllib.request.urlopen(req) as response:
+                n8n_response = response.read().decode("utf-8")
+                print(f"[mock-api] n8n response: {n8n_response}")
+                
+        except Exception as e:
+            print(f"[mock-api] Failed to trigger n8n: {e}")
+            # We don't fail the whole request, but log it. 
+            # In a real app, we'd handle retry logic.
+
         return self.respond_json(
             {"item": job, "status": status, "dispatch_payload": dispatch_payload},
             status=HTTPStatus.CREATED,
@@ -629,6 +748,59 @@ class MockApiHandler(BaseHTTPRequestHandler):
 
         self.rebuild_data_cache()
         return self.respond_json({"item": item, "status": status})
+
+    def handle_quote_result(self) -> None:
+        payload = self.read_json_body()
+        quote_id = payload.get("quote_id") or payload.get("quoteId")
+        if not quote_id:
+            return self.respond_json({"error": "quote_id is required"}, status=HTTPStatus.BAD_REQUEST)
+
+        current = self.build_quote_draft()
+        meta = current.get("meta", {})
+        current_quote_id = meta.get("quote_id") or meta.get("id")
+        updated_meta = {
+            **meta,
+            "quote_id": current_quote_id or quote_id,
+            "ai_processing_status": payload.get("status", "ready"),
+            "ai_processing_note": payload.get("message")
+            or payload.get("note")
+            or "n8n обработал запрос по коммерческому предложению.",
+            "ai_last_run_at": now_iso(),
+            "ai_result": payload,
+        }
+
+        MockApiHandler.quote_draft = {
+            **current,
+            "meta": updated_meta,
+            "saved_at": current.get("saved_at"),
+        }
+        return self.respond_json({"ok": True, "quote_id": quote_id, "status": updated_meta["ai_processing_status"]})
+
+    def handle_quote_failed(self) -> None:
+        payload = self.read_json_body()
+        quote_id = payload.get("quote_id") or payload.get("quoteId")
+        if not quote_id:
+            return self.respond_json({"error": "quote_id is required"}, status=HTTPStatus.BAD_REQUEST)
+
+        current = self.build_quote_draft()
+        meta = current.get("meta", {})
+        current_quote_id = meta.get("quote_id") or meta.get("id")
+        error_text = payload.get("error") or payload.get("message") or "Обработка коммерческого предложения завершилась с ошибкой."
+        updated_meta = {
+            **meta,
+            "quote_id": current_quote_id or quote_id,
+            "ai_processing_status": "error",
+            "ai_processing_note": error_text,
+            "ai_last_run_at": now_iso(),
+            "ai_result": payload,
+        }
+
+        MockApiHandler.quote_draft = {
+            **current,
+            "meta": updated_meta,
+            "saved_at": current.get("saved_at"),
+        }
+        return self.respond_json({"ok": True, "quote_id": quote_id, "status": "error"})
 
     def save_quote_draft(self) -> None:
         payload = self.read_json_body()

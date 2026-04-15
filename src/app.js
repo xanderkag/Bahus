@@ -3,6 +3,8 @@ import { createDemoState } from "./data/demo-data.js";
 import { loadStateFromApi } from "./services/api.js";
 import { createBackend } from "./services/backend.js";
 import { getBootstrapConfig, getStoredSidebarCollapsed, getStoredTheme, persistDataSource } from "./services/config.js";
+import { createFirebaseAuthService } from "./services/firebase-auth.js";
+import { createFirebaseStorageService } from "./services/firebase-storage.js";
 import { createStore } from "./state/store.js";
 import { createAppEventHandlers } from "./utils/dom.js";
 import { renderLayout } from "./views/layout.js";
@@ -91,11 +93,14 @@ async function main() {
     theme: getStoredTheme(),
   };
   const store = createStore(initialState);
+  const authService = initialState.settings?.auth_enabled ? createFirebaseAuthService() : null;
+  const storageService = initialState.settings?.live_upload_enabled ? createFirebaseStorageService() : null;
   const backend =
     initialState.runtime?.dataSource === "local-api"
       ? createBackend(initialState.runtime.apiBaseUrl || config.apiBaseUrl)
       : null;
-  const actions = createActions(store, backend);
+  const actions = createActions(store, backend, authService, storageService);
+  store.actions = actions;
   const handlers = createAppEventHandlers(actions);
   let importStatusPollId = null;
   let pollingInFlight = false;
@@ -134,8 +139,39 @@ async function main() {
   }
 
   function render() {
+    // Save focus context
+    const activeDocElement = document.activeElement;
+    let focusSelector = null;
+    let selectionStart = null;
+    let selectionEnd = null;
+
+    if (activeDocElement && (activeDocElement.tagName === "INPUT" || activeDocElement.tagName === "TEXTAREA")) {
+      if (activeDocElement.dataset.field) {
+        focusSelector = `[data-field="${activeDocElement.dataset.field}"]`;
+      } else if (activeDocElement.id) {
+        focusSelector = `#${activeDocElement.id}`;
+      }
+      try {
+        selectionStart = activeDocElement.selectionStart;
+        selectionEnd = activeDocElement.selectionEnd;
+      } catch (e) {}
+    }
+
     document.documentElement.dataset.theme = store.getState().settings?.theme || "dark";
     root.innerHTML = renderLayout(store.getState());
+
+    // Restore focus context
+    if (focusSelector) {
+      const newActive = root.querySelector(focusSelector);
+      if (newActive) {
+        newActive.focus();
+        try {
+          if (selectionStart !== null && selectionEnd !== null) {
+            newActive.setSelectionRange(selectionStart, selectionEnd);
+          }
+        } catch (e) {}
+      }
+    }
   }
 
   root.addEventListener("click", handlers.click);
@@ -153,6 +189,12 @@ async function main() {
     syncImportStatusPolling(state);
   });
   render();
+  if (authService) {
+    actions.setAuthStatus({ status: "loading" });
+    await authService.initialize((user) => {
+      actions.handleAuthStateChange({ user });
+    });
+  }
   if (initialState.runtime?.dataSource === "local-api") {
     void actions.refreshRemoteData();
   }

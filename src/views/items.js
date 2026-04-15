@@ -162,7 +162,7 @@ function renderColumnMenu(state, filterOptions, column) {
     <div class="column-menu">
       <div class="column-menu-header">
         <strong>${escapeHtml(column === "review_status" ? "Проверка" : column === "promo" ? "Акция" : column === "issues" ? "Проблемы" : column === "name" ? "Наименование" : column === "code" ? "Код" : column === "country" ? "Страна" : "Категория")}</strong>
-        <button class="ghost-btn compact-action-btn icon-action-btn" data-action="toggleColumnFilter" data-column="${column}" aria-label="Закрыть фильтр">×</button>
+        <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn" data-action="toggleColumnFilter" data-column="${column}" aria-label="Закрыть фильтр">×</button>
       </div>
       ${contentByColumn[column] || ""}
     </div>
@@ -258,18 +258,18 @@ export function renderItems(state) {
           <div class="overview-summary-inline">
             <span class="pill">Все импорты</span>
             <span class="pill">${state.ui.scope === "my" ? "Мои" : "Все"}</span>
-            <button class="ghost-btn compact-action-btn" data-action="resetFilters" title="Сбросить все фильтры">Сбросить</button>
+            <button class="ghost-btn compact-action-btn table-action-btn" data-action="resetFilters" title="Сбросить все фильтры">Сбросить</button>
           </div>
         </div>
         <div class="table-wrap overview-table-wrap">
           <div class="overview-table-toolbar">
             <div class="toolbar-actions overview-table-actions">
               <span class="overview-selection-pill">Выбрано ${selectedRows.size}</span>
-              <button class="ghost-btn compact-action-btn icon-action-btn" data-action="selectAllVisibleRows" title="Выделить все строки текущего представления" aria-label="Выделить все">◎</button>
-              <button class="ghost-btn compact-action-btn icon-action-btn" data-action="clearSelectedRows" title="Снять текущее выделение" aria-label="Снять выделение">◌</button>
-              <button class="ghost-btn compact-action-btn icon-action-btn icon-action-good" data-action="markSelectedChecked" title="Отметить выделенные строки как проверенные" aria-label="Проверено">✓</button>
-              <button class="ghost-btn compact-action-btn icon-action-btn icon-action-bad" data-action="excludeSelectedRows" title="Исключить выделенные строки" aria-label="Исключить">×</button>
-              <button class="ghost-btn compact-action-btn" data-action="addSelectionToQuote" title="Добавить выделенные строки в КП">В КП</button>
+              <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn" data-action="selectAllVisibleRows" title="Выделить все строки текущего представления" aria-label="Выделить все">◎</button>
+              <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn" data-action="clearSelectedRows" title="Снять текущее выделение" aria-label="Снять выделение">◌</button>
+              <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn icon-action-good" data-action="markSelectedChecked" title="Отметить выделенные строки как проверенные" aria-label="Проверено">✓</button>
+              <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn icon-action-bad" data-action="excludeSelectedRows" title="Исключить выделенные строки" aria-label="Исключить">×</button>
+              <button class="ghost-btn compact-action-btn table-action-btn" data-action="addSelectionToQuote" title="Добавить выделенные строки в КП">В КП</button>
             </div>
           </div>
           <table>
@@ -332,7 +332,7 @@ export function renderItems(state) {
                       <td><span class="pill pill-${issue.kind}">${issue.label}${issue.count ? ` · ${issue.count}` : ""}</span></td>
                       <td><span class="pill">${escapeHtml(formatReviewStatus(product.review_status))}</span></td>
                       <td>
-                        <button class="ghost-btn" data-action="openRowDetails" data-product-id="${product.id}">
+                        <button class="ghost-btn table-row-btn" data-action="openRowDetails" data-product-id="${product.id}">
                           Детали
                         </button>
                       </td>

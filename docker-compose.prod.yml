@@ -1,0 +1,54 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: bakhus-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bakhus}
+      POSTGRES_USER: ${POSTGRES_USER:-bakhus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bakhus}
+    volumes:
+      - bakhus-postgres-data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bakhus} -d ${POSTGRES_DB:-bakhus}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-api:
+    build:
+      context: .
+      dockerfile: docker/postgres-api.Dockerfile
+    container_name: bakhus-postgres-api
+    restart: unless-stopped
+    environment:
+      API_HOST: 0.0.0.0
+      API_PORT: 8078
+      DATABASE_URL: postgresql://${POSTGRES_USER:-bakhus}:${POSTGRES_PASSWORD:-bakhus}@postgres:5432/${POSTGRES_DB:-bakhus}
+      N8N_IMPORT_WEBHOOK_URL: ${N8N_IMPORT_WEBHOOK_URL}
+      PUBLIC_API_URL: ${PUBLIC_API_URL}
+    volumes:
+      - bakhus-uploads:/app/.local/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    container_name: bakhus-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - bakhus-uploads:/app/.local/uploads:ro
+    depends_on:
+      - postgres-api
+
+volumes:
+  bakhus-postgres-data:
+  bakhus-uploads:

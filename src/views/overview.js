@@ -242,7 +242,7 @@ function renderImportColumnMenu(state, column) {
     <div class="column-menu">
       <div class="column-menu-header">
         <strong>${escapeHtml(labels[column] || column)}</strong>
-        <button class="ghost-btn compact-action-btn icon-action-btn" data-action="toggleImportColumnFilter" data-column="${column}" aria-label="Закрыть фильтр">×</button>
+        <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn" data-action="toggleImportColumnFilter" data-column="${column}" aria-label="Закрыть фильтр">×</button>
       </div>
       ${contentByColumn[column] || ""}
     </div>
@@ -270,7 +270,7 @@ function renderImportsTable(state) {
           <td><span class="status-pill">${escapeHtml(formatImportStatus(item.status))}</span></td>
           <td><span class="pill">${issueCount} проблем</span></td>
           <td>
-            <button class="ghost-btn compact-action-btn icon-action-btn" data-action="seedQuoteFromImport" data-import-id="${item.id}" title="Создать КП из файла" aria-label="Создать КП">+</button>
+            <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn table-add-btn" data-action="seedQuoteFromImport" data-import-id="${item.id}" title="Создать КП из файла" aria-label="Создать КП">+</button>
           </td>
         </tr>
       `;
@@ -437,7 +437,7 @@ function renderColumnMenu(state, filterOptions, column) {
                                   : column === "margin_pct" ? "Маржа %"
                                     : column
         )}</strong>
-        <button class="ghost-btn compact-action-btn icon-action-btn" data-action="toggleColumnFilter" data-column="${column}" aria-label="Закрыть фильтр">×</button>
+        <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn" data-action="toggleColumnFilter" data-column="${column}" aria-label="Закрыть фильтр">×</button>
       </div>
       ${contentByColumn[column] || ""}
     </div>
@@ -563,7 +563,7 @@ function renderPhotoGallery(product) {
     .join("");
 }
 
-function renderDetailProperties(state, product, currentImport) {
+function renderDetailProperties(state, product, currentImport, isEditing = false) {
   const issues = getIssuesForProduct(state, product.id);
   const issueByField = new Map(issues.map((issue) => [issue.field, issue]));
   const clientPrice =
@@ -587,6 +587,9 @@ function renderDetailProperties(state, product, currentImport) {
       label: "Нормализованное имя",
       value: product.manual_normalized_name || product.normalized_name,
       source: product.manual_normalized_name ? "ручная нормализация" : "авторазбор",
+      field: "normalized_name",
+      editable: true,
+      kind: "text",
     },
     {
       label: "ID товара",
@@ -597,26 +600,41 @@ function renderDetailProperties(state, product, currentImport) {
       label: "Категория",
       value: product.category,
       source: issueByField.get("category")?.message || "разобрано из прайса",
+      field: "category",
+      editable: true,
+      kind: "text",
     },
     {
       label: "Страна",
       value: product.country,
       source: issueByField.get("country")?.message || "разобрано из прайса",
+      field: "country",
+      editable: true,
+      kind: "text",
     },
     {
       label: "Объём",
-      value: formatNumber(product.volume_l),
+      value: product.volume_l,
       source: issueByField.get("volume_l")?.message || "значение из строки / авторазбор",
+      field: "volume_l",
+      editable: true,
+      kind: "number",
     },
     {
       label: "Закупка",
-      value: formatMoney(product.purchase_price, currentImport.meta.currency),
+      value: product.purchase_price,
       source: issueByField.get("purchase_price")?.message || "закупочная цена поставщика",
+      field: "purchase_price",
+      editable: true,
+      kind: "number",
     },
     {
       label: "РРЦ",
-      value: formatMoney(product.rrc_min, currentImport.meta.currency),
+      value: product.rrc_min,
       source: issueByField.get("rrc_min")?.message || "рекомендованная розничная цена",
+      field: "rrc_min",
+      editable: true,
+      kind: "number",
     },
     {
       label: "Цена клиенту",
@@ -624,9 +642,9 @@ function renderDetailProperties(state, product, currentImport) {
       source: typeof product.rrc_min === "number" ? "берём из РРЦ" : "резервно из закупки",
     },
     {
-      label: "Маржа",
+      label: "Ориентир по марже",
       value: `${formatMoney(marginRub, currentImport.meta.currency)} · ${formatPercent(marginPct)}`,
-      source: "расчёт от закупки и цены клиенту",
+      source: "предварительный расчёт от закупки и РРЦ, не финальная цена продажи",
     },
     {
       label: "Акция",
@@ -635,17 +653,57 @@ function renderDetailProperties(state, product, currentImport) {
     },
     {
       label: "Статус проверки",
-      value: formatReviewStatus(product.review_status),
+      value: product.review_status,
       source: product.excluded ? "позиция исключена вручную" : "рабочий статус проверки",
+      field: "review_status",
+      editable: true,
+      kind: "select",
+      options: [
+        { value: "pending", label: "Ждёт проверки" },
+        { value: "checked", label: "Проверено" },
+        { value: "excluded", label: "Исключено" },
+      ],
     },
   ];
 
   return fields
     .map(
       (field) => `
-        <article class="detail-property-card">
+        <article class="detail-property-card ${isEditing && field.editable ? "is-editable" : ""}">
           <span>${escapeHtml(field.label)}</span>
-          <strong>${escapeHtml(formatValue(field.value))}</strong>
+          ${
+            isEditing && field.editable
+              ? field.kind === "select"
+                ? `
+                  <select class="input detail-property-input" data-input="setProductField" data-product-id="${product.id}" data-field="${field.field}">
+                    ${field.options
+                      .map(
+                        (option) => `<option value="${option.value}" ${field.value === option.value ? "selected" : ""}>${escapeHtml(option.label)}</option>`,
+                      )
+                      .join("")}
+                  </select>
+                `
+                : `
+                  <input
+                    class="input detail-property-input"
+                    ${field.kind === "number" ? 'inputmode="decimal"' : ""}
+                    value="${escapeHtml(formatValue(field.value ?? ""))}"
+                    data-input="setProductField"
+                    data-product-id="${product.id}"
+                    data-field="${field.field}"
+                    placeholder="${escapeHtml(field.label)}"
+                  />
+                `
+              : `<strong>${escapeHtml(formatValue(
+                  field.kind === "number" && field.field
+                    ? field.field === "volume_l"
+                      ? formatNumber(field.value)
+                      : formatMoney(field.value, currentImport.meta.currency)
+                    : field.field === "review_status"
+                      ? formatReviewStatus(field.value)
+                      : field.value,
+                ))}</strong>`
+          }
           <p>${escapeHtml(field.source)}</p>
         </article>
       `,
@@ -663,6 +721,7 @@ function renderRowDetailModal(state) {
   const supplier = getCurrentSupplier(state);
   const issues = getIssuesForProduct(state, product.id);
   const issueSummary = getRowIssueSummary(state, product.id);
+  const isEditing = Boolean(state.ui.rowDetailEditMode);
 
   return `
     <div class="modal-overlay">
@@ -675,6 +734,7 @@ function renderRowDetailModal(state) {
           </div>
           <div class="toolbar-actions row-detail-header-actions">
             <span class="pill pill-${issueSummary.kind}">${issueSummary.label}${issueSummary.count ? ` · ${issueSummary.count}` : ""}</span>
+            <button class="ghost-btn" data-action="toggleRowDetailEditMode">${isEditing ? "Готово" : "Редактировать"}</button>
             <button class="ghost-btn" data-action="closeModal" aria-label="Закрыть окно деталей">Закрыть</button>
           </div>
         </div>
@@ -690,10 +750,10 @@ function renderRowDetailModal(state) {
           <section class="detail-card row-detail-main">
             <div class="row-detail-card-header">
               <h3>Что у позиции сейчас</h3>
-              <p class="hint">Ключевые поля, которые уже извлечены из прайса и участвуют в review.</p>
+              <p class="hint">${isEditing ? "Измените спорные поля и подтвердите правки кнопкой «Готово»." : "Ключевые поля, которые уже извлечены из прайса и участвуют в review."}</p>
             </div>
             <div class="detail-properties-grid">
-              ${renderDetailProperties(state, product, currentImport)}
+              ${renderDetailProperties(state, product, currentImport, isEditing)}
             </div>
           </section>
           <section class="detail-card row-detail-side">
@@ -755,7 +815,7 @@ function renderRowDetailModal(state) {
               }
             </div>
           </section>
-          <section class="detail-card">
+          <section class="detail-card ${isEditing ? "" : "is-collapsed"}">
             <div class="row-detail-card-header">
               <h3>Ручная корректировка</h3>
               <p class="hint">Используйте только для спорных строк, которые не удалось разобрать автоматически.</p>
@@ -949,21 +1009,21 @@ export function renderOverview(state) {
             <span class="pill">Проверено: ${stats.checked}</span>
             <span class="pill">Исключено: ${stats.excluded}</span>
             <span class="pill ${selectedCount ? "pill-accent" : ""}">Выбрано: ${selectedCount}</span>
-            <button class="ghost-btn compact-action-btn" data-action="openCurrentImportInFiles">К импорту</button>
+            <button class="ghost-btn compact-action-btn table-action-btn" data-action="openCurrentImportInFiles">К импорту</button>
           </div>
         </div>
         <div class="table-wrap overview-table-wrap">
           <div class="overview-table-toolbar">
             <div class="toolbar-actions overview-table-actions">
               <span class="overview-selection-pill">Выбрано ${selectedCount}</span>
-              <button class="ghost-btn compact-action-btn icon-action-btn" data-action="selectAllVisibleRows" title="Выделить все строки после текущей фильтрации" aria-label="Выделить все">◎</button>
-              <button class="ghost-btn compact-action-btn icon-action-btn" data-action="clearSelectedRows" title="Снять текущее выделение" aria-label="Снять выделение">◌</button>
-              <button class="ghost-btn compact-action-btn icon-action-btn icon-action-good" data-action="markSelectedChecked" title="Отметить выделенные строки как проверенные" aria-label="Проверено">✓</button>
-              <button class="ghost-btn compact-action-btn icon-action-btn icon-action-bad" data-action="excludeSelectedRows" title="Исключить выделенные строки из дальнейшей обработки" aria-label="Исключить">×</button>
-              <button class="ghost-btn compact-action-btn" data-action="addSelectionToQuote" title="Добавить выделенные строки в состав КП">В КП</button>
-              <button class="ghost-btn compact-action-btn" data-action="openIssuesModal" title="Открыть список ошибок и предупреждений по текущему файлу">Проблемы</button>
-              <button class="ghost-btn compact-action-btn" data-action="resetFilters" title="Сбросить все фильтры">Сбросить</button>
-              <button class="primary-btn compact-action-btn" data-action="buildQuote" title="Сформировать рабочий сценарий коммерческого предложения по выделенным строкам">Сформировать КП</button>
+              <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn" data-action="selectAllVisibleRows" title="Выделить все строки после текущей фильтрации" aria-label="Выделить все">◎</button>
+              <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn" data-action="clearSelectedRows" title="Снять текущее выделение" aria-label="Снять выделение">◌</button>
+              <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn icon-action-good" data-action="markSelectedChecked" title="Отметить выделенные строки как проверенные" aria-label="Проверено">✓</button>
+              <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn icon-action-bad" data-action="excludeSelectedRows" title="Исключить выделенные строки из дальнейшей обработки" aria-label="Исключить">×</button>
+              <button class="ghost-btn compact-action-btn table-action-btn" data-action="addSelectionToQuote" title="Добавить выделенные строки в состав КП">В КП</button>
+              <button class="ghost-btn compact-action-btn table-action-btn" data-action="openIssuesModal" title="Открыть список ошибок и предупреждений по текущему файлу">Проблемы</button>
+              <button class="ghost-btn compact-action-btn table-action-btn" data-action="resetFilters" title="Сбросить все фильтры">Сбросить</button>
+              <button class="primary-btn compact-action-btn table-action-btn" data-action="buildQuote" title="Сформировать рабочий сценарий коммерческого предложения по выделенным строкам">Сформировать КП</button>
             </div>
           </div>
           <table>

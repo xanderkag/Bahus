@@ -142,6 +142,9 @@ export const demoQuotes = [
       managerName: "Александр",
       note: "Базовая версия для внутренней проверки цен и маржи.",
       mode: "internal",
+      aiProcessingStatus: "idle",
+      aiProcessingNote: "",
+      aiLastRunAt: null,
     },
     items: [
       { source_product_id: "imp_003:b-2001", sale_price: 499, qty: 1 },
@@ -164,6 +167,9 @@ export const demoQuotes = [
       managerName: "Александр",
       note: "Клиентская версия с промо-позициями и быстрым циклом согласования.",
       mode: "client",
+      aiProcessingStatus: "idle",
+      aiProcessingNote: "",
+      aiLastRunAt: null,
     },
     items: [
       { source_product_id: "imp_002:a-1001", sale_price: 2290, qty: 2 },
@@ -185,6 +191,9 @@ export const demoQuotes = [
       managerName: "Александр",
       note: "Нужно добрать клиента и проверить проблемные строки перед отправкой.",
       mode: "internal",
+      aiProcessingStatus: "idle",
+      aiProcessingNote: "",
+      aiLastRunAt: null,
     },
     items: [
       { source_product_id: "imp_001:s147415", sale_price: 1109, qty: 1 },
@@ -341,6 +350,7 @@ export function normalizeImportsToState(imports, options = {}) {
       selectedQuoteId: initialQuoteId,
       selectedRowIds: [],
       selectedRowDetailId: null,
+      rowDetailEditMode: false,
       sidebarCollapsed: false,
       clientPickerOpen: false,
       clientPickerQuery: "",
@@ -391,6 +401,11 @@ export function normalizeImportsToState(imports, options = {}) {
         title: "",
         note: "",
         requestFiles: [],
+        uploadStatus: "idle",
+        uploadProgress: 0,
+        uploadStage: "",
+        uploadLog: [],
+        uploadError: null,
       },
       uploadDraft: {
         supplierId: "sup_nr",
@@ -399,6 +414,10 @@ export function normalizeImportsToState(imports, options = {}) {
         files: [],
         attachments: [],
         managerNote: "",
+      },
+      loginDraft: {
+        username: "",
+        password: "",
       },
       exportDraft: {
         format: "csv",
@@ -420,17 +439,19 @@ export function normalizeImportsToState(imports, options = {}) {
       },
     },
     settings: {
-      workflow_endpoint: "n8n://price-import-orchestrator",
+      workflow_endpoint: "https://n8n.chevich.com/webhook/bakhus-pdf-import",
       catalog_source: dataSource,
       export_format: "pdf",
       theme: "dark",
+      auth_enabled: true,
       users_enabled: false,
-      live_upload_enabled: false,
+      live_upload_enabled: true,
+      quote_request_storage_enabled: false,
       users: [
         {
           id: "usr_001",
           name: "Александр Ляпустин",
-          email: "liapsutin@gmail.com",
+          email: "liapustin@gmail.com",
           role: "Администратор",
           scope: "Все данные",
           auth: "Google",
@@ -454,6 +475,15 @@ export function normalizeImportsToState(imports, options = {}) {
           auth: "Google",
           status: "Активен",
         },
+        {
+          id: "usr_004",
+          name: "AI CRM Corp",
+          email: "ai.crm.corp@gmail.com",
+          role: "Администратор",
+          scope: "Все данные",
+          auth: "Google",
+          status: "Активен",
+        },
       ],
     },
     runtime: {
@@ -462,11 +492,18 @@ export function normalizeImportsToState(imports, options = {}) {
       bootstrapMode,
       bootstrapError,
       apiBaseUrl: null,
+      quoteRequestDraftFile: null,
+      quoteRequestFilesByQuoteId: {},
       resources: {
         imports: { status: "idle", error: null, items: [] },
         catalog: { status: "idle", error: null, items: [] },
         quoteDraft: { status: "idle", error: null, item: null, lastSavedAt: null },
       },
+    },
+    auth: {
+      status: "idle",
+      currentUser: null,
+      error: null,
     },
   };
 }

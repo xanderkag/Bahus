@@ -29,6 +29,17 @@ function formatQuoteStatus(status) {
   return labels[status] || formatValue(status);
 }
 
+function formatAiProcessingStatus(status) {
+  const labels = {
+    idle: "Не запускали",
+    queued: "В очереди",
+    running: "В работе",
+    ready: "Готово",
+    error: "Ошибка",
+  };
+  return labels[status] || formatValue(status);
+}
+
 function summarizeQuoteRecord(quote) {
   const items = quote.items || [];
   const summary = items.reduce(
@@ -279,7 +290,7 @@ function renderQuoteListColumnMenu(state, column) {
     <div class="column-menu">
       <div class="column-menu-header">
         <strong>${escapeHtml(labels[column] || column)}</strong>
-        <button class="ghost-btn compact-action-btn icon-action-btn" data-action="toggleQuoteListColumnFilter" data-column="${column}" aria-label="Закрыть фильтр">×</button>
+        <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn" data-action="toggleQuoteListColumnFilter" data-column="${column}" aria-label="Закрыть фильтр">×</button>
       </div>
       ${contentByColumn[column] || ""}
     </div>
@@ -309,7 +320,7 @@ function renderQuotesTable(state) {
           <td>${formatPercent(summary.marginPct)}</td>
           <td><span class="status-pill">${escapeHtml(formatQuoteStatus(quote.status))}</span></td>
           <td>
-            <button class="ghost-btn compact-action-btn icon-action-btn" data-action="selectQuote" data-quote-id="${quote.id}" title="Открыть КП" aria-label="Открыть КП">→</button>
+            <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn" data-action="selectQuote" data-quote-id="${quote.id}" title="Открыть КП" aria-label="Открыть КП">→</button>
           </td>
         </tr>
       `;
@@ -380,14 +391,10 @@ function renderQuoteTable(state) {
           <td>${formatMoney(item.lineSum, currency)}</td>
           <td>${pricingState}</td>
           <td>
-            <button class="ghost-btn" data-action="toggleAlternativeBlock" data-item-id="${item.id}">
-              Аналоги
-            </button>
+            <button class="ghost-btn table-row-btn btn-with-icon" data-action="toggleAlternativeBlock" data-item-id="${item.id}"><span class="btn-icon-glyph">≈</span><span>Аналоги</span></button>
           </td>
           <td>
-            <button class="ghost-btn danger-text" data-action="removeQuoteItem" data-item-id="${item.id}">
-              Удалить
-            </button>
+            <button class="ghost-btn table-row-btn table-row-btn-danger btn-with-icon" data-action="removeQuoteItem" data-item-id="${item.id}"><span class="btn-icon-glyph">−</span><span>Удалить</span></button>
           </td>
         </tr>
         ${
@@ -424,7 +431,7 @@ function renderAlternativesTable(itemId, alternatives) {
           <strong>Альтернативные товары</strong>
           <span class="table-subtitle">${alternatives.length} вариантов для быстрой замены позиции</span>
         </div>
-        <button class="ghost-btn compact-action-btn" data-action="useBestAlternative" data-item-id="${itemId}">Выбрать лучший</button>
+        <button class="ghost-btn compact-action-btn table-action-btn btn-with-icon" data-action="useBestAlternative" data-item-id="${itemId}"><span class="btn-icon-glyph">★</span><span>Выбрать лучший</span></button>
       </div>
       <table class="nested-table quote-alternatives-table">
         <thead>
@@ -458,9 +465,7 @@ function renderAlternativesTable(itemId, alternatives) {
                     </div>
                   </td>
                   <td>
-                    <button class="${index === 0 ? "primary-btn" : "ghost-btn"} compact-action-btn" data-action="applyAlternative" data-item-id="${itemId}" data-alternative-id="${alternative.id}">
-                      ${index === 0 ? "Выбрать лучший" : "Выбрать"}
-                    </button>
+                    <button class="${index === 0 ? "primary-btn" : "ghost-btn"} compact-action-btn table-action-btn btn-with-icon" data-action="applyAlternative" data-item-id="${itemId}" data-alternative-id="${alternative.id}"><span class="btn-icon-glyph">${index === 0 ? "★" : "+"}</span><span>${index === 0 ? "Выбрать лучший" : "Выбрать"}</span></button>
                   </td>
                 </tr>
               `,
@@ -547,6 +552,13 @@ export function renderQuote(state) {
   const alerts = getQuoteAlerts(state);
   const draftResource = state.runtime?.resources?.quoteDraft;
   const currentQuoteRecord = getCurrentQuoteRecord(state);
+  const aiStatus = meta.aiProcessingStatus || "idle";
+  const workflowEndpoint = String(state.settings?.workflow_endpoint || "");
+  const hasRealWorkflowEndpoint = /^https?:\/\//i.test(workflowEndpoint);
+  const localQuoteFile = state.ui.selectedQuoteId ? state.runtime?.quoteRequestFilesByQuoteId?.[state.ui.selectedQuoteId] : null;
+  const hasRemoteFile = Boolean(meta.requestFiles?.some((file) => file?.downloadUrl || file?.storagePath)) || Boolean(localQuoteFile);
+  const hasInput = Boolean(meta.requestFiles?.length || meta.note);
+  const canRunAi = hasInput && hasRealWorkflowEndpoint && hasRemoteFile;
 
   return `
     <section class="view-stack quote-workspace">
@@ -558,7 +570,7 @@ export function renderQuote(state) {
           </div>
           <div class="toolbar-actions">
             <button class="ghost-btn" data-action="resetQuoteListFilters">Сбросить фильтры</button>
-            <button class="primary-btn" data-action="openNewQuoteModal">Добавить КП</button>
+            <button class="primary-btn btn-with-icon" data-action="openNewQuoteModal"><span class="btn-icon-glyph">+</span><span>Добавить КП</span></button>
           </div>
         </div>
         <div class="table-wrap quote-list-wrap">
@@ -595,7 +607,9 @@ export function renderQuote(state) {
           <div class="toolbar-actions quote-actions">
             <div class="action-group">
               <button class="ghost-btn" data-action="goToReview">Вернуться в review</button>
+              <button class="ghost-btn btn-with-icon" data-action="goToReview"><span class="btn-icon-glyph">+</span><span>Добавить позицию</span></button>
               <button class="ghost-btn" data-action="fillQuoteFromVisibleReview">Заполнить из фильтра</button>
+              <button class="ghost-btn" data-action="runQuoteAiProcessing" ${canRunAi ? "" : "disabled"}>${aiStatus === "running" ? "Обработка ИИ..." : "Обработка ИИ"}</button>
               <button class="ghost-btn" data-action="openQuotePreview">Предпросмотр</button>
               <span class="action-divider" aria-hidden="true"></span>
               <button class="ghost-btn soft-danger-btn" data-action="clearQuote">Очистить</button>
@@ -618,6 +632,7 @@ export function renderQuote(state) {
           <span class="pill">${meta.clientName || "Клиент не выбран"}</span>
           <span class="pill">${summary.positions} ${pluralize(summary.positions, "позиция", "позиции", "позиций")}</span>
           <span class="pill">${formatMoney(summary.sale)}</span>
+          <span class="pill ${aiStatus === "ready" ? "pill-good" : aiStatus === "error" ? "pill-bad" : aiStatus === "running" || aiStatus === "queued" ? "pill-warn" : ""}">ИИ: ${escapeHtml(formatAiProcessingStatus(aiStatus))}</span>
           ${alerts.missingRrc.length ? `<span class="pill pill-warn">без RRC: ${alerts.missingRrc.length}</span>` : ""}
           ${alerts.missingSale.length ? `<span class="pill pill-bad">без цены продажи: ${alerts.missingSale.length}</span>` : ""}
           ${alerts.negativeMargin.length ? `<span class="pill pill-bad">отрицательная маржа: ${alerts.negativeMargin.length}</span>` : ""}
@@ -627,6 +642,18 @@ export function renderQuote(state) {
               : ""
           }
         </div>
+        ${
+          !hasRealWorkflowEndpoint
+            ? `<div class="hint quote-items-hint">Webhook n8n для КП пока не настроен. Укажите реальный http(s) endpoint, и обработка пойдёт наружу.</div>`
+            : localQuoteFile
+              ? `<div class="hint quote-items-hint">К этому КП привязан локальный файл запроса. После создания КП Bahus может сразу отправлять его в n8n.</div>`
+              : ""
+        }
+        ${
+          meta.aiProcessingNote
+            ? `<div class="hint quote-items-hint">${escapeHtml(meta.aiProcessingNote)}</div>`
+            : ""
+        }
         <div class="hint quote-items-hint">Для позиций КП сейчас важнее быстрые действия по строке и подбор аналогов. Полный слой фильтрации здесь пока не нужен и только перегрузит рабочий сценарий.</div>
         <div class="table-wrap">
           <table>

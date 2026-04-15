@@ -1,12 +1,19 @@
 import { loadStateFromApi } from "./api.js";
 
 async function fetchJson(url, options = {}) {
+  const isFormData = options.body instanceof FormData;
+  const headers = {
+    Accept: "application/json",
+    ...options.headers,
+  };
+
+  if (!isFormData && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
+
   const response = await fetch(url, {
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
     ...options,
+    headers,
   });
 
   if (!response.ok) {
@@ -15,6 +22,7 @@ async function fetchJson(url, options = {}) {
 
   return response.json();
 }
+
 
 export function createBackend(apiBaseUrl) {
   return {
@@ -28,7 +36,7 @@ export function createBackend(apiBaseUrl) {
     createImport(payload) {
       return fetchJson(`${apiBaseUrl}/imports`, {
         method: "POST",
-        body: JSON.stringify(payload),
+        body: payload instanceof FormData ? payload : JSON.stringify(payload),
       });
     },
     dispatchImport(importId, payload = {}) {

@@ -35,19 +35,30 @@ services:
     container_name: bakhus-frontend
     ports:
       - "4173:80"
+    volumes:
+      - bakhus-uploads:/app/.local/uploads:ro
     depends_on:
-      - mock-api
+      - postgres-api
 
-  mock-api:
+  postgres-api:
     build:
       context: .
-      dockerfile: docker/mock-api.Dockerfile
-    container_name: bakhus-mock-api
+      dockerfile: docker/postgres-api.Dockerfile
+    container_name: bakhus-postgres-api
     environment:
-      MOCK_API_HOST: 0.0.0.0
-      MOCK_API_PORT: 8079
+      API_HOST: 0.0.0.0
+      API_PORT: 8078
+      DATABASE_URL: postgresql://bakhus:bakhus@postgres:5432/bakhus
+      N8N_IMPORT_WEBHOOK_URL: ${N8N_IMPORT_WEBHOOK_URL}
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:4173}
     ports:
-      - "8079:8079"
+      - "8078:8078"
+    volumes:
+      - bakhus-uploads:/app/.local/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   bakhus-postgres-data:
+  bakhus-uploads:

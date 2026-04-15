@@ -30,6 +30,68 @@ const pageMeta = {
   },
 };
 
+function renderAuthGate(state) {
+  const auth = state.auth || {};
+  const draft = state.ui.loginDraft || {};
+  const isLoading = auth.status === "authenticating" || auth.status === "loading";
+  return `
+    <div class="auth-shell">
+      <div class="auth-card">
+        <div class="auth-hero">
+          <div class="auth-brand">
+            <div class="auth-brand-mark">
+              <img class="auth-brand-logo" src="src/assets/bahus-logo.jpg" alt="Логотип Бахус" />
+            </div>
+            <div>
+              <div class="brand-title">Bakhus Assistant</div>
+              <div class="brand-subtitle">Закрытый рабочий контур для импорта, review и КП</div>
+            </div>
+          </div>
+          <div class="auth-badge">Private Beta / Master Account</div>
+        </div>
+        <div class="auth-copy">
+          <h1>Войти в workspace</h1>
+          <p>Вход по корпоративным учетным данным. Если у вас нет доступа — обратитесь к администратору.</p>
+        </div>
+        
+        <div class="auth-form">
+          <div class="form-stack">
+            <label class="field-label">Логин</label>
+            <input 
+              type="text" 
+              class="input" 
+              placeholder="Username" 
+              value="${escapeHtml(draft.username || "")}" 
+              data-input="setLoginDraftField" 
+              data-field="username"
+              ${isLoading ? "disabled" : ""}
+            />
+          </div>
+          <div class="form-stack">
+            <label class="field-label">Пароль</label>
+            <input 
+              type="password" 
+              class="input" 
+              placeholder="Password" 
+              value="${escapeHtml(draft.password || "")}" 
+              data-input="setLoginDraftField" 
+              data-field="password"
+              ${isLoading ? "disabled" : ""}
+            />
+          </div>
+        </div>
+
+        <div class="auth-actions">
+          <button class="primary-btn full-width" data-action="signInMaster" ${isLoading ? "disabled" : ""}>
+            ${isLoading ? "Входим в систему..." : "Войти в Bahus"}
+          </button>
+          ${auth.error ? `<div class="hint hint-error auth-status">${escapeHtml(auth.error)}</div>` : '<div class="hint auth-status">Введите ваши учетные данные для доступа к рабочему контуру.</div>'}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function renderActiveView(state) {
   if (state.ui.activeView === "quote") return renderQuote(state);
   if (state.ui.activeView === "items") return renderItems(state);
@@ -41,50 +103,136 @@ function renderNewQuoteModal(state) {
   if (state.ui.modal !== "new-quote") return "";
   const draft = state.ui.newQuoteDraft || {};
   const clients = (state.entities.clientOrder || []).map((id) => state.entities.clientsById[id]).filter(Boolean);
+  const selectedClient = clients.find((client) => client.id === draft.clientId) || null;
+  const isUploadingFiles = draft.uploadStatus === "uploading";
+  const uploadProgress = Number.isFinite(draft.uploadProgress) ? draft.uploadProgress : 0;
   return `
     <div class="modal-overlay">
-      <div class="app-dialog compact-dialog">
+      <div class="app-dialog compact-dialog quote-create-dialog">
         <div class="dialog-header">
           <div>
             <h3>Создать новое КП</h3>
-            <p>Зафиксируйте клиента, короткое название запроса и при необходимости сразу приложите входящие файлы клиента.</p>
+            <p>Запрос клиента, основные параметры и документы для будущего подбора.</p>
           </div>
           <button class="ghost-btn" data-action="closeModal">Закрыть</button>
         </div>
-        <div class="form-grid">
-          <select class="input" data-change="setNewQuoteDraftField" data-field="clientId">
-            <option value="">Выберите клиента</option>
-            ${clients
-              .map(
-                (client) =>
-                  `<option value="${client.id}" ${draft.clientId === client.id ? "selected" : ""}>${escapeHtml(client.name)}</option>`,
-              )
-              .join("")}
-          </select>
-          <input class="input" placeholder="Название запроса / тема КП" value="${escapeHtml(draft.title || "")}" data-input="setNewQuoteDraftField" data-field="title" />
-        </div>
-        <textarea class="input textarea compact-textarea" placeholder="Комментарий менеджера или краткое описание запроса" data-input="setNewQuoteDraftField" data-field="note">${escapeHtml(draft.note || "")}</textarea>
-        <div class="form-stack">
-          <label class="field-label">Файлы клиента</label>
-          <input class="input" type="file" multiple data-change="setNewQuoteRequestFiles" />
-          ${
-            draft.requestFiles?.length
-              ? `
-                  <div class="upload-file-list">
-                    ${draft.requestFiles
-                      .map(
-                        (file) => `
-                          <div class="upload-file-pill">
-                            <strong>${escapeHtml(file.name)}</strong>
-                            <span>${escapeHtml(formatValue(file.type))} · ${escapeHtml(formatValue(file.size))} bytes</span>
-                          </div>
-                        `,
-                      )
-                      .join("")}
-                  </div>
-                `
-              : '<div class="hint">Можно загрузить PDF, Excel или любой исходный запрос клиента. Пока это локальная подготовка без серверной загрузки.</div>'
-          }
+        <div class="quote-create-stack">
+          <section class="quote-create-card quote-create-info">
+            <div class="quote-create-card-header">
+              <strong>Общая информация</strong>
+            </div>
+            <div class="quote-create-form-grid">
+              <div class="form-stack">
+                <label class="field-label">Клиент</label>
+                <select class="input" data-change="setNewQuoteDraftField" data-field="clientId">
+                  <option value="">Выберите клиента</option>
+                  ${clients
+                    .map(
+                      (client) =>
+                        `<option value="${client.id}" ${draft.clientId === client.id ? "selected" : ""}>${escapeHtml(client.name)}</option>`,
+                    )
+                    .join("")}
+                </select>
+              </div>
+              <div class="form-stack">
+                <label class="field-label">Тема / повод запроса</label>
+                <input
+                  class="input"
+                  placeholder="Например: летняя веранда, праздничное меню, экспресс-запрос по бару"
+                  value="${escapeHtml(draft.title || "")}"
+                  data-input="setNewQuoteDraftField"
+                  data-field="title"
+                />
+              </div>
+            </div>
+            ${
+              selectedClient
+                ? `
+                    <div class="quote-client-meta">
+                      <span class="pill">${escapeHtml(selectedClient.name)}</span>
+                      <span class="pill">ИНН ${escapeHtml(selectedClient.inn || "—")}</span>
+                      <span class="pill">${escapeHtml(selectedClient.city || "—")}</span>
+                    </div>
+                  `
+                : ""
+            }
+          </section>
+
+          <section class="quote-create-card">
+            <div class="quote-create-card-header">
+              <strong>Контекст для ИИ</strong>
+            </div>
+            <div class="form-stack">
+              <textarea
+                class="input textarea quote-request-textarea"
+                placeholder="Например: поставщик такой-то, нужен подбор под праздник, фокус на игристом и крепком, бюджет такой-то, исключить отдельные категории."
+                data-input="setNewQuoteDraftField"
+                data-field="note"
+              >${escapeHtml(draft.note || "")}</textarea>
+            </div>
+          </section>
+
+          <section class="quote-create-card quote-create-files">
+            <div class="quote-create-card-header">
+              <strong>Основной файл запроса</strong>
+              <span>${isUploadingFiles ? "Загрузка..." : draft.requestFiles?.length ? "Загружен" : "Не выбран"}</span>
+            </div>
+            <label class="upload-dropzone quote-upload-dropzone">
+              <input id="new-quote-request-file" class="upload-dropzone-input-hidden" type="file" data-change="setNewQuoteRequestFiles" ${isUploadingFiles ? "disabled" : ""} />
+              <span class="quote-upload-icon">+</span>
+              <strong>${isUploadingFiles ? "Загружаем файлы клиента" : "Перетащите файлы сюда"}</strong>
+              <span>${isUploadingFiles ? "Подождите, файл обрабатывается." : "Один файл: PDF, Excel, HTML, скриншот или другой входящий документ клиента."}</span>
+            </label>
+            ${
+              draft.uploadStatus !== "idle"
+                ? `
+                    <div class="upload-progress-card">
+                      <div class="upload-progress-header">
+                        <strong>${escapeHtml(draft.uploadStage || "Подготовка загрузки")}</strong>
+                        <span>${uploadProgress}%</span>
+                      </div>
+                      <div class="upload-progress-bar">
+                        <span style="width: ${Math.max(4, Math.min(uploadProgress, 100))}%"></span>
+                      </div>
+                      ${
+                        draft.uploadLog?.length
+                          ? `
+                              <div class="upload-log-list">
+                                ${draft.uploadLog
+                                  .map(
+                                    (entry) => `
+                                      <div class="upload-log-entry upload-log-entry-${escapeHtml(entry.level || "info")}">${escapeHtml(entry.message)}</div>
+                                    `,
+                                  )
+                                  .join("")}
+                              </div>
+                            `
+                          : ""
+                      }
+                    </div>
+                  `
+                : ""
+            }
+            ${draft.uploadError ? `<div class="hint hint-warning">${escapeHtml(draft.uploadError)}</div>` : ""}
+            ${
+              draft.requestFiles?.length
+                ? `
+                    <div class="upload-file-list quote-upload-grid">
+                      ${draft.requestFiles
+                        .map(
+                          (file) => `
+                            <div class="upload-file-pill quote-upload-pill quote-upload-pill-main">
+                              <strong>${escapeHtml(file.name)}</strong>
+                              <span>${escapeHtml(formatValue(file.type))} · ${escapeHtml(formatValue(file.size))} bytes · ${file.downloadUrl ? "загружен в storage" : file.status === "local" ? "локальный черновик" : file.status || "ожидание"}</span>
+                            </div>
+                          `,
+                        )
+                        .join("")}
+                    </div>
+                  `
+                : ""
+            }
+          </section>
         </div>
         <div class="toolbar-actions justify-end">
           <button class="ghost-btn" data-action="closeModal">Отмена</button>
@@ -252,6 +400,10 @@ function renderExportModal(state) {
 }
 
 export function renderLayout(state) {
+  if (state.settings?.auth_enabled && !state.auth?.currentUser) {
+    return renderAuthGate(state);
+  }
+
   const meta = pageMeta[state.ui.activeView];
   const isSidebarCollapsed = Boolean(state.ui.sidebarCollapsed);
   const runtime = state.runtime || {
@@ -325,6 +477,7 @@ export function renderLayout(state) {
             state.ui.activeView === "overview"
               ? `
                   <div class="topbar-actions topbar-workzone topbar-workzone-actions">
+                    <span class="pill">${escapeHtml(state.auth?.currentUser?.email || "")}</span>
                     <button class="ghost-btn" data-action="openUploadFilesModal">Новый импорт</button>
                     <button
                       class="ghost-btn"
@@ -335,10 +488,13 @@ export function renderLayout(state) {
                     </button>
                     <button class="primary-btn" data-action="openNewQuoteModal">Новое КП</button>
                     <button class="ghost-btn" data-action="openExportModal">Экспорт</button>
+                    <button class="ghost-btn" data-action="signOutMaster">Выйти</button>
                   </div>
                 `
               : `
                   <div class="topbar-actions">
+                    <span class="pill">${escapeHtml(state.auth?.currentUser?.email || "")}</span>
+                    <button class="ghost-btn" data-action="signOutMaster">Выйти</button>
                     <button class="ghost-btn" data-action="openExportModal">Экспорт</button>
                   </div>
                 `
