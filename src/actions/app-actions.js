@@ -1506,20 +1506,20 @@ export function createActions(store, backend = null, authService = null, storage
     async createNewQuote() {
       let createdQuoteId = null;
       let shouldAutoRunAi = false;
-      const snapshot = store.getState();
-      const draft = snapshot.ui.newQuoteDraft;
-      const client = snapshot.entities.clientsById?.[draft.clientId] || null;
-      
-      const aiState = deriveQuoteAiState(
-        {
-          requestFiles: draft.requestFiles || [],
-          note: draft.note || "",
-        },
-        snapshot.settings || {},
-      );
-      
-      if (backend) {
-        try {
+      try {
+        const snapshot = store.getState();
+        const draft = snapshot.ui.newQuoteDraft || {};
+        const client = snapshot.entities.clientsById?.[draft.clientId] || null;
+        
+        const aiState = deriveQuoteAiState(
+          {
+            requestFiles: draft.requestFiles || [],
+            note: draft.note || "",
+          },
+          snapshot.settings || {},
+        );
+        
+        if (backend) {
           const res = await backend.createQuote({
             meta: {
               clientId: client?.id || "",
@@ -1532,22 +1532,24 @@ export function createActions(store, backend = null, authService = null, storage
             createdQuoteId = returnedQuote.id;
             
             update((state) => {
+              const safeQuoteMeta = state.quote?.meta || {};
+              const safeReturnedMeta = returnedQuote.meta || {};
               const quoteRecord = {
                 id: createdQuoteId,
                 linkedImportId: null,
                 status: returnedQuote.status || "draft",
                 updatedAt: toInputDate(),
                 meta: {
-                  ...state.quote.meta,
-                  clientId: returnedQuote.meta?.clientId || draft.clientId || "",
+                  ...safeQuoteMeta,
+                  clientId: safeReturnedMeta.clientId || draft.clientId || "",
                   clientName: client?.name || "",
-                  requestTitle: returnedQuote.meta?.requestTitle || draft.title || "",
+                  requestTitle: safeReturnedMeta.requestTitle || draft.title || "",
                   requestFiles: draft.requestFiles || [],
-                  quoteNumber: returnedQuote.meta?.quoteNumber || `КП-${toInputDate().replaceAll("-", "")}`,
-                  quoteDate: returnedQuote.meta?.quoteDate || toInputDate(),
+                  quoteNumber: safeReturnedMeta.quoteNumber || `КП-${toInputDate().replaceAll("-", "")}`,
+                  quoteDate: safeReturnedMeta.quoteDate || toInputDate(),
                   managerName: "Александр",
-                  note: returnedQuote.meta?.note || draft.note || "",
-                  mode: returnedQuote.meta?.mode || "internal",
+                  note: safeReturnedMeta.note || draft.note || "",
+                  mode: safeReturnedMeta.mode || "internal",
                   aiProcessingStatus: aiState.status,
                   aiProcessingNote: aiState.note,
                   aiLastRunAt: aiState.canRun ? new Date().toISOString() : null,
@@ -1555,13 +1557,15 @@ export function createActions(store, backend = null, authService = null, storage
                 items: returnedQuote.items || [],
               };
               
+              const currentRuntime = state.runtime || {};
+              
               return {
                 ...state,
                 entities: {
-                  ...state.entities,
-                  quoteOrder: [createdQuoteId, ...state.entities.quoteOrder],
+                  ...(state.entities || {}),
+                  quoteOrder: [createdQuoteId, ...(state.entities?.quoteOrder || [])],
                   quotesById: {
-                    ...state.entities.quotesById,
+                    ...(state.entities?.quotesById || {}),
                     [createdQuoteId]: quoteRecord,
                   },
                 },
@@ -1571,17 +1575,17 @@ export function createActions(store, backend = null, authService = null, storage
                   meta: quoteRecord.meta,
                 },
                 runtime: {
-                  ...state.runtime,
+                  ...currentRuntime,
                   quoteRequestFilesByQuoteId: {
-                    ...(state.runtime.quoteRequestFilesByQuoteId || {}),
-                    ...(state.runtime.quoteRequestDraftFile
-                      ? { [createdQuoteId]: state.runtime.quoteRequestDraftFile }
+                    ...(currentRuntime.quoteRequestFilesByQuoteId || {}),
+                    ...(currentRuntime.quoteRequestDraftFile
+                      ? { [createdQuoteId]: currentRuntime.quoteRequestDraftFile }
                       : {}),
                   },
                   quoteRequestDraftFile: null,
                 },
                 ui: {
-                  ...state.ui,
+                  ...(state.ui || {}),
                   activeView: "quote",
                   selectedQuoteId: createdQuoteId,
                   modal: null,
@@ -1604,21 +1608,23 @@ export function createActions(store, backend = null, authService = null, storage
               };
             });
             shouldAutoRunAi = aiState.canRun;
+          } else {
+             throw new Error("Бэкенд не вернул данные о КП (item: undefined)");
           }
-        } catch (error) {
-          console.error("Failed to create quote", error);
-          update((state) => ({
-            ...state,
-            ui: {
-              ...state.ui,
-              newQuoteDraft: {
-                ...state.ui.newQuoteDraft,
-                uploadError: error.message || "Ошибка подключения к серверу. Пожалуйста, перезагрузите страницу.",
-              },
-            },
-          }));
-          return;
         }
+      } catch (error) {
+        console.error("Failed to create quote", error);
+        update((state) => ({
+          ...state,
+          ui: {
+            ...state.ui,
+            newQuoteDraft: {
+              ...(state.ui?.newQuoteDraft || {}),
+              uploadError: error.message || "Ошибка при создании КП: " + error.toString(),
+            },
+          },
+        }));
+        return;
       }
       if (shouldAutoRunAi && createdQuoteId) {
         setTimeout(() => {
