@@ -137,10 +137,15 @@ async function main() {
     let selectionEnd = null;
 
     if (activeDocElement && (activeDocElement.tagName === "INPUT" || activeDocElement.tagName === "TEXTAREA")) {
-      if (activeDocElement.dataset.field) {
-        focusSelector = `[data-field="${activeDocElement.dataset.field}"]`;
-      } else if (activeDocElement.id) {
+      if (activeDocElement.id) {
         focusSelector = `#${activeDocElement.id}`;
+      } else {
+        const parts = [];
+        if (activeDocElement.dataset.input) parts.push(`[data-input="${activeDocElement.dataset.input}"]`);
+        if (activeDocElement.dataset.field) parts.push(`[data-field="${activeDocElement.dataset.field}"]`);
+        if (activeDocElement.dataset.productId) parts.push(`[data-product-id="${activeDocElement.dataset.productId}"]`);
+        if (activeDocElement.dataset.itemId) parts.push(`[data-item-id="${activeDocElement.dataset.itemId}"]`);
+        if (parts.length > 0) focusSelector = parts.join("");
       }
       try {
         selectionStart = activeDocElement.selectionStart;
