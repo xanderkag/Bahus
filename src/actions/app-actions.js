@@ -19,6 +19,14 @@ function unique(items) {
   return [...new Set(items)];
 }
 
+function debounce(func, wait) {
+  let timeout;
+  return function(...args) {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(this, args), wait);
+  };
+}
+
 function makeId(prefix) {
   return `${prefix}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -690,7 +698,7 @@ export function createActions(store, backend = null, authService = null, storage
         },
       }));
     },
-    setClientPickerQuery(_dataset, value) {
+    setClientPickerQuery: debounce((_dataset, value) => {
       update((state) => ({
         ...state,
         ui: {
@@ -699,7 +707,7 @@ export function createActions(store, backend = null, authService = null, storage
           clientPickerQuery: value,
         },
       }));
-    },
+    }, 200),
     selectClient({ clientId }) {
       update((state) => {
         const client = state.entities.clientsById?.[clientId];
@@ -935,12 +943,12 @@ export function createActions(store, backend = null, authService = null, storage
         ]);
       }
     },
-    setFilter({ field }, value) {
+    setFilter: debounce(({ field }, value) => {
       update((state) => ({
         ...state,
         ui: { ...state.ui, filters: { ...state.ui.filters, [field]: value } },
       }));
-    },
+    }, 200),
     toggleFilterChoice({ field, value }) {
       update((state) => {
         const current = new Set(state.ui.filters[field] || []);
@@ -991,7 +999,7 @@ export function createActions(store, backend = null, authService = null, storage
         },
       }));
     },
-    setImportTextFilter({ field }, value) {
+    setImportTextFilter: debounce(({ field }, value) => {
       update((state) => ({
         ...state,
         ui: {
@@ -1002,7 +1010,7 @@ export function createActions(store, backend = null, authService = null, storage
           },
         },
       }));
-    },
+    }, 200),
     toggleImportFilterChoice({ field, value }) {
       update((state) => {
         const current = new Set(state.ui.importFilters[field] || []);
@@ -1054,7 +1062,7 @@ export function createActions(store, backend = null, authService = null, storage
         },
       }));
     },
-    setQuoteListTextFilter({ field }, value) {
+    setQuoteListTextFilter: debounce(({ field }, value) => {
       update((state) => ({
         ...state,
         ui: {
@@ -1065,7 +1073,7 @@ export function createActions(store, backend = null, authService = null, storage
           },
         },
       }));
-    },
+    }, 200),
     toggleQuoteListFilterChoice({ field, value }) {
       update((state) => {
         const current = new Set(state.ui.quoteListFilters[field] || []);
