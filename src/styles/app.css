@@ -345,6 +345,11 @@
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
+.primary-btn:hover {
+  background: linear-gradient(180deg, rgba(73, 132, 194, 0.38), rgba(40, 68, 115, 0.46));
+  border-color: rgba(113, 184, 255, 0.58);
+}
+
 .danger-text {
   color: var(--bad);
 }

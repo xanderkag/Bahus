@@ -224,5 +224,6 @@ export function createInitialState(payload = {}, options = {}) {
         imports: { status: "idle", items: [], error: null },
       },
     },
+    settings: {},
   };
 }

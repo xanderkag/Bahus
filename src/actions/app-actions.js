@@ -1599,7 +1599,16 @@ export function createActions(store, backend = null, authService = null, storage
           }
         } catch (error) {
           console.error("Failed to create quote", error);
-          // Fallback to local creation if backend fails is omitted for now to force DB logic
+          update((state) => ({
+            ...state,
+            ui: {
+              ...state.ui,
+              newQuoteDraft: {
+                ...state.ui.newQuoteDraft,
+                uploadError: error.message || "Ошибка подключения к серверу. Пожалуйста, перезагрузите страницу.",
+              },
+            },
+          }));
           return;
         }
       }
