@@ -9,4 +9,4 @@ COPY scripts/postgres_api.py /app/scripts/postgres_api.py
 
 EXPOSE 8078
 
-CMD ["python3", "/app/scripts/postgres_api.py", "--host", "0.0.0.0", "--port", "8078"]
+CMD ["python3", "/app/scripts/postgres_api.py"]

@@ -53,8 +53,8 @@ UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Bakhus Assistant PostgreSQL API")
-    parser.add_argument("--host", default=os.getenv("API_HOST", "127.0.0.1"))
-    parser.add_argument("--port", type=int, default=int(os.getenv("API_PORT", "8078")))
+    parser.add_argument("--host", default=os.getenv("API_HOST", "0.0.0.0"))
+    parser.add_argument("--port", type=int, default=int(os.getenv("PORT", os.getenv("API_PORT", "8078"))))
     return parser.parse_args()
 
 
