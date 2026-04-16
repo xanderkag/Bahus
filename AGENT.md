@@ -4,11 +4,12 @@
 We are in the **Production Maintenance** stage. The project has transitioned from a demo prototype on Cloud Run to a fully operational monolithic deployment on a Yandex Cloud VM. The next goals revolve around feature iteration and scaling the n8n workflows.
 
 ## 🛠 Project Architecture
-- **Stage**: Production. The `demo-data.js` and local fallback modes have been utterly eradicated.
-- **Frontend**: Modular Vanilla JS/HTML in `src/`. Initial state is now strictly synthesized inside `src/state/initial-state.js` dynamically from Postgres via the `bootstrap` payload (`clients`, `imports` etc). Dynamically maps API calls to `window.location.origin/api`. Served by Nginx container.
-- **Backend (Primary)**: `scripts/postgres_api.py`. Handles dynamic `handle_bootstrap` providing DB datasets to frontend, CORS proxy, cleanup workers, database retry logic, robust multipart `requests` forwarding to n8n, and handles UUID constraint tracking elegantly via SQL subqueries.
-- **Database**: PostgreSQL database mounted via persistent Docker volume. Native UUID handling is actively enforced.
-- **CI/CD**: GitHub Actions auto-deploys any `main` branch pushes directly to the Yandex Cloud server.
+- **Stage**: Pre-Prod (Operational Validation). The mock fallback models have been utterly eradicated, and the app operates successfully end-to-end on real database sources.
+- **Frontend Core**: Modular Vanilla JS in `src/`. Initial state synthesis is natively loaded inside `src/state/initial-state.js` dynamically from Postgres.
+- **Frontend UX Mechanics**: Typing mechanisms are fully battle-tested (utilizes `debounce` wrappers for searches, `data-change` bindings for non-blocking numeric edits, and multi-attribute CSS selector extraction for flawless cursor restoration across virtual DOM redraws).
+- **Backend (Primary)**: `scripts/postgres_api.py`. Provides DB datasets, CORS proxy, UI workflow bindings, and seamless data hydration for the client.
+- **Database**: PostgreSQL hosted natively. UUID data compliance strictly enforced.
+- **CI/CD**: GitHub Actions auto-deploys `main` branch directly to Yandex Server (`111.88.144.93`).
 
 ## 🚀 Key Deploy Information
 - **Yandex VM**: `111.88.144.93`
