@@ -382,10 +382,10 @@ function renderQuoteTable(state) {
             <div class="table-subtitle">${escapeHtml(formatValue(item.normalized_name))} · ${escapeHtml(formatValue(item.country))} · ${escapeHtml(formatValue(item.category))}</div>
           </td>
           <td>${formatNumber(item.volume_l)}</td>
-          <td><input class="input input-compact" value="${item.qty}" data-input="setQuoteItemQty" data-item-id="${item.id}" /></td>
+          <td><input class="input input-compact" value="${item.qty}" data-change="setQuoteItemQty" data-item-id="${item.id}" /></td>
           <td>${formatMoney(item.purchase_price, currency)}</td>
           <td>${formatMoney(item.rrc_min, currency)}</td>
-          <td><input class="input input-compact" value="${item.sale_price ?? ""}" data-input="setQuoteItemSale" data-item-id="${item.id}" /></td>
+          <td><input class="input input-compact" value="${item.sale_price ?? ""}" data-change="setQuoteItemSale" data-item-id="${item.id}" /></td>
           <td><span class="pill ${marginClass}">${formatMoney(item.marginRub, currency)}</span></td>
           <td>${formatPercent(item.marginPct)}</td>
           <td>${formatMoney(item.lineSum, currency)}</td>

@@ -675,7 +675,7 @@ function renderDetailProperties(state, product, currentImport, isEditing = false
             isEditing && field.editable
               ? field.kind === "select"
                 ? `
-                  <select class="input detail-property-input" data-input="setProductField" data-product-id="${product.id}" data-field="${field.field}">
+                  <select class="input detail-property-input" data-change="setProductField" data-product-id="${product.id}" data-field="${field.field}">
                     ${field.options
                       .map(
                         (option) => `<option value="${option.value}" ${field.value === option.value ? "selected" : ""}>${escapeHtml(option.label)}</option>`,
@@ -688,7 +688,7 @@ function renderDetailProperties(state, product, currentImport, isEditing = false
                     class="input detail-property-input"
                     ${field.kind === "number" ? 'inputmode="decimal"' : ""}
                     value="${escapeHtml(formatValue(field.value ?? ""))}"
-                    data-input="setProductField"
+                    data-change="setProductField"
                     data-product-id="${product.id}"
                     data-field="${field.field}"
                     placeholder="${escapeHtml(field.label)}"
