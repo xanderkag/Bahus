@@ -12,6 +12,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Generate Version File
+        run: |
+          echo "export const VERSION_INFO = { version: '1.0.0', commit: '${GITHUB_SHA::7}', date: '$(date -u +"%Y-%m-%d %H:%M:%S UTC")' };" > src/version.js
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:

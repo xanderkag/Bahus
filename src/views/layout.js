@@ -3,6 +3,7 @@ import { renderOverview } from "./overview.js";
 import { renderQuote } from "./quote.js";
 import { renderSettings } from "./settings.js";
 import { escapeHtml, formatValue } from "../utils/format.js";
+import { VERSION_INFO } from "../version.js";
 
 const navigation = [
   { id: "overview", label: "Импорт файлов", icon: "ИФ" },
@@ -458,7 +459,7 @@ export function renderLayout(state) {
       <main class="main">
         <header class="topbar">
           <div>
-            <div class="eyebrow">Bakhus Assistant / Workspace</div>
+            <div class="eyebrow">Bakhus Assistant / Workspace <span class="pill pill-accent" style="margin-left: 8px; font-variant-numeric: tabular-nums;" title="Обновлено: ${escapeHtml(VERSION_INFO.date)}">v${escapeHtml(VERSION_INFO.version)} (${escapeHtml(VERSION_INFO.commit)})</span></div>
             <h1>${meta.title}</h1>
             ${meta.subtitle ? `<p>${meta.subtitle}</p>` : ""}
             ${
