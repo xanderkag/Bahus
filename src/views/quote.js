@@ -20,24 +20,26 @@ import {
   pluralize,
 } from "../utils/format.js";
 
+const QUOTE_STATUS_LABELS = {
+  draft: "Черновик",
+  review: "На проверке",
+  ready: "Готово",
+};
+
 function formatQuoteStatus(status) {
-  const labels = {
-    draft: "Черновик",
-    review: "На проверке",
-    ready: "Готово",
-  };
-  return labels[status] || formatValue(status);
+  return QUOTE_STATUS_LABELS[status] || formatValue(status);
 }
 
+const AI_STATUS_LABELS = {
+  idle: "Не запускали",
+  queued: "В очереди",
+  running: "В работе",
+  ready: "Готово",
+  error: "Ошибка",
+};
+
 function formatAiProcessingStatus(status) {
-  const labels = {
-    idle: "Не запускали",
-    queued: "В очереди",
-    running: "В работе",
-    ready: "Готово",
-    error: "Ошибка",
-  };
-  return labels[status] || formatValue(status);
+  return AI_STATUS_LABELS[status] || formatValue(status);
 }
 
 function summarizeQuoteRecord(quote) {
