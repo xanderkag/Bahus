@@ -883,45 +883,32 @@ function renderJobsPanel(state) {
   if (state.runtime?.dataSource !== "local-api") return "";
 
   return `
-    <article class="panel jobs-panel">
+    <article class="panel jobs-panel" style="display: flex; flex-direction: column;">
       <div class="panel-header">
         <div>
           <h2>Фоновые операции</h2>
-          <p>Служебный блок для этапов разбора, нормализации, сопоставления и выгрузки.</p>
+          <p>Статус системных процессов.</p>
         </div>
-        <button class="ghost-btn" data-action="refreshRemoteData">Обновить операции</button>
+        <button class="ghost-btn compact-action-btn icon-action-btn" data-action="refreshRemoteData" title="Обновить">↻</button>
       </div>
-      <div class="resource-banner">
-        <span class="pill">Статус API: ${escapeHtml(formatValue(resource?.status || "idle"))}</span>
-        ${resource?.error ? `<span class="pill pill-bad">${escapeHtml(resource.error)}</span>` : ""}
-      </div>
-      <div class="toolbar-actions jobs-actions" style="margin-top:12px;">
-        <button class="ghost-btn" data-action="triggerJob" data-job-type="parse" data-target="${escapeHtml(state.ui.selectedImportId)}">Запустить разбор</button>
-        <button class="ghost-btn" data-action="triggerJob" data-job-type="normalize" data-target="${escapeHtml(state.ui.selectedImportId)}">Запустить нормализацию</button>
-        <button class="ghost-btn" data-action="triggerJob" data-job-type="match" data-target="${escapeHtml(state.ui.selectedImportId)}">Запустить сопоставление</button>
-        <button class="ghost-btn" data-action="triggerJob" data-job-type="export_quote" data-target="quote_draft">Запустить выгрузку</button>
-      </div>
-      <div class="table-wrap jobs-table-wrap">
+      <div class="table-wrap compact-table jobs-table-wrap" style="flex: 1; border: none;">
         <table>
           <thead>
             <tr>
-              <th>Операция</th>
-              <th>Тип</th>
+              <th>Тип операции</th>
               <th>Статус</th>
-              <th>Цель</th>
               <th>Обновлено</th>
             </tr>
           </thead>
           <tbody>
             ${jobs
+              .slice(0, 5) // Show only latest 5 to save space
               .map(
                 (job) => `
                   <tr>
-                    <td><div class="table-title">${escapeHtml(job.id)}</div></td>
-                    <td>${escapeHtml(formatValue(job.type))}</td>
-                    <td><span class="pill ${job.status === "done" ? "pill-good" : "pill-warn"}">${job.status === "done" ? "Завершено" : escapeHtml(formatValue(job.status))}</span></td>
-                    <td>${escapeHtml(job.target)}</td>
-                    <td>${escapeHtml(job.updated_at)}</td>
+                    <td><span class="pill" style="font-size: 11px;">${escapeHtml(formatValue(job.type))}</span></td>
+                    <td><span class="status-pill ${job.status === "done" ? "status-good" : job.status === "error" ? "status-bad" : "status-warn"}">${job.status === "done" ? "Завершено" : escapeHtml(formatValue(job.status))}</span></td>
+                    <td style="color: var(--text-2); font-size: 12px;">${escapeHtml(job.updated_at.split(".")[0])}</td>
                   </tr>
                 `,
               )
@@ -974,36 +961,39 @@ export function renderOverview(state) {
 
   return `
     <section class="view-stack overview-workspace">
-      <article class="panel overview-files-panel">
-        <div class="panel-header overview-panel-header">
-          <div class="overview-panel-headline">
-            <h2>Файлы</h2>
-            <p>Импортированные файлы, поиск и быстрый переход в КП.</p>
+      <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 16px;">
+        <article class="panel overview-files-panel" style="min-width: 0; display: flex; flex-direction: column;">
+          <div class="panel-header overview-panel-header">
+            <div class="overview-panel-headline">
+              <h2>Файлы</h2>
+              <p>Импортированные файлы, поиск и быстрый переход в КП.</p>
+            </div>
+            <div class="toolbar-actions overview-table-actions">
+              <button class="ghost-btn compact-action-btn" data-action="openExportModal" title="Экспорт списка">Экспорт</button>
+              <button class="ghost-btn icon-action-btn table-danger-btn" data-action="openConfirmDeleteImportModal" ${!state.ui.selectedImportId ? "disabled" : ""} title="Удалить выбранный прайс">🗑️</button>
+              <button class="ghost-btn icon-action-btn table-add-btn" data-action="openUploadFilesModal" title="Загрузить прайс-лист">+</button>
+            </div>
           </div>
-          <div class="toolbar-actions overview-table-actions">
-            <button class="ghost-btn compact-action-btn" data-action="openExportModal" title="Экспорт списка">Экспорт</button>
-            <button class="ghost-btn icon-action-btn table-danger-btn" data-action="openConfirmDeleteImportModal" ${!state.ui.selectedImportId ? "disabled" : ""} title="Удалить выбранный прайс">🗑️</button>
-            <button class="ghost-btn icon-action-btn table-add-btn" data-action="openUploadFilesModal" title="Загрузить прайс-лист">+</button>
+          <div class="table-wrap compact-table overview-imports-table" style="flex: 1;">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th class="filterable-th">${renderImportColumnHeader("Файл", "file", state.ui.activeImportColumnFilter)}${renderImportColumnMenu(state, "file")}</th>
+                  <th>Дата</th>
+                  <th class="filterable-th">${renderImportColumnHeader("Формат", "format", state.ui.activeImportColumnFilter)}${renderImportColumnMenu(state, "format")}</th>
+                  <th class="filterable-th">${renderImportColumnHeader("Поставщик", "supplier", state.ui.activeImportColumnFilter)}${renderImportColumnMenu(state, "supplier")}</th>
+                  <th class="filterable-th">${renderImportColumnHeader("Тип", "type", state.ui.activeImportColumnFilter)}${renderImportColumnMenu(state, "type")}</th>
+                  <th class="filterable-th">${renderImportColumnHeader("Статус", "status", state.ui.activeImportColumnFilter)}${renderImportColumnMenu(state, "status")}</th>
+                  <th>Проблемы</th>
+                </tr>
+              </thead>
+              <tbody>${renderImportsTable(state)}</tbody>
+            </table>
           </div>
-        </div>
-        <div class="table-wrap compact-table overview-imports-table">
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th class="filterable-th">${renderImportColumnHeader("Файл", "file", state.ui.activeImportColumnFilter)}${renderImportColumnMenu(state, "file")}</th>
-                <th>Дата</th>
-                <th class="filterable-th">${renderImportColumnHeader("Формат", "format", state.ui.activeImportColumnFilter)}${renderImportColumnMenu(state, "format")}</th>
-                <th class="filterable-th">${renderImportColumnHeader("Поставщик", "supplier", state.ui.activeImportColumnFilter)}${renderImportColumnMenu(state, "supplier")}</th>
-                <th class="filterable-th">${renderImportColumnHeader("Тип", "type", state.ui.activeImportColumnFilter)}${renderImportColumnMenu(state, "type")}</th>
-                <th class="filterable-th">${renderImportColumnHeader("Статус", "status", state.ui.activeImportColumnFilter)}${renderImportColumnMenu(state, "status")}</th>
-                <th>Проблемы</th>
-              </tr>
-            </thead>
-            <tbody>${renderImportsTable(state)}</tbody>
-          </table>
-        </div>
-      </article>
+        </article>
+        ${renderJobsPanel(state)}
+      </div>
 
       <article class="panel overview-products-panel">
         <div class="panel-header overview-panel-header">
@@ -1062,8 +1052,6 @@ export function renderOverview(state) {
           </table>
         </div>
       </article>
-
-      ${renderJobsPanel(state)}
 
       ${renderIssuesModal(state)}
       ${renderRowDetailModal(state)}
