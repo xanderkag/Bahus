@@ -139,6 +139,10 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.NO_CONTENT)
         self.end_headers()
 
+    def do_HEAD(self) -> None:  # noqa: N802
+        self.send_response(HTTPStatus.OK)
+        self.end_headers()
+
     def do_GET(self) -> None:  # noqa: N802
         try:
             self._do_GET_internal()
