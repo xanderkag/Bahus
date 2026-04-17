@@ -275,11 +275,10 @@ function renderUploadFilesModal(state) {
         <div class="panel" style="display:flex; flex-direction:column; gap:16px; margin-bottom:16px;">
           <h4 style="margin:0; font-size:var(--text-sm); color:var(--text);">Медиа и файлы</h4>
           <div class="form-stack">
-            <label class="field-label">Прайс-лист поставщика</label>
             <label class="upload-dropzone">
               <input class="upload-dropzone-input-hidden" type="file" multiple data-change="setUploadDraftFiles" />
-              <strong>Перетащите прайс сюда или выберите файлы</strong>
-              <span>Подходят Excel, PDF и другие входящие файлы поставщика.</span>
+              <strong>Перетащите прайсы и любые вложения сюда</strong>
+              <span>Подходят Excel, PDF, картинки и другие входящие от поставщика.</span>
             </label>
             ${
               draft.files?.length
@@ -287,43 +286,20 @@ function renderUploadFilesModal(state) {
                     <div class="upload-file-list">
                       ${draft.files
                         .map(
-                          (file) => `
-                            <div class="upload-file-pill">
-                              <strong>${escapeHtml(file.name)}</strong>
-                              <span>${escapeHtml(formatValue(file.type))} · ${escapeHtml(formatValue(file.size))} bytes</span>
+                          (file, idx) => `
+                            <div class="upload-file-pill" style="display: flex; justify-content: space-between; align-items: center;">
+                              <div>
+                                <strong>${escapeHtml(file.name)}</strong>
+                                <span>${escapeHtml(formatValue(file.type))} · ${escapeHtml(formatValue(file.size))} bytes</span>
+                              </div>
+                              <button class="ghost-btn icon-action-btn table-danger-btn" style="padding: 4px; min-width: unset; height: unset;" data-action="removeUploadDraftFile" data-index="${idx}" title="Удалить файл">🗑️</button>
                             </div>
                           `,
                         )
                         .join("")}
                     </div>
                   `
-                : '<div class="hint">Можно выбрать несколько файлов. Каждый файл создаётся как отдельный импорт.</div>'
-            }
-          </div>
-          <div class="form-stack">
-            <label class="field-label">Дополнительные вложения</label>
-            <label class="upload-dropzone">
-              <input class="upload-dropzone-input-hidden" type="file" multiple data-change="setUploadDraftAttachments" />
-              <strong>Перетащите вложения сюда</strong>
-              <span>Например: сопроводительный PDF или таблицы по акции.</span>
-            </label>
-            ${
-              draft.attachments?.length
-                ? `
-                    <div class="upload-file-list">
-                      ${draft.attachments
-                        .map(
-                          (file) => `
-                            <div class="upload-file-pill">
-                              <strong>${escapeHtml(file.name)}</strong>
-                              <span>${escapeHtml(formatValue(file.type))} · ${escapeHtml(formatValue(file.size))} bytes</span>
-                            </div>
-                          `,
-                        )
-                        .join("")}
-                    </div>
-                  `
-                : ""
+                : '<div class="hint">Можно кидать файл за файлом. При множественном выборе каждый файл будет создан как отдельный импорт.</div>'
             }
           </div>
         </div>

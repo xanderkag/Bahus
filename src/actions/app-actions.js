@@ -1667,31 +1667,46 @@ export function createActions(store, backend = null, authService = null, storage
       }));
     },
     setUploadDraftFiles(_dataset, _value, event) {
-      const files = Array.from(event?.target?.files || []);
+      const newFiles = Array.from(event?.target?.files || []);
+      const currentState = store.getState();
+      const existingFiles = currentState.ui.uploadDraft?.files || [];
+      
+      const merged = [...existingFiles];
+      newFiles.forEach(file => {
+        if (!merged.find(f => f.name === file.name && f.size === file.size)) {
+           merged.push(file);
+        }
+      });
+
       update((state) => ({
         ...state,
         ui: {
           ...state.ui,
           uploadDraft: {
             ...state.ui.uploadDraft,
-            files,
+            files: merged,
           },
         },
       }));
     },
-    setUploadDraftAttachments(_dataset, _value, event) {
-      const attachments = Array.from(event?.target?.files || []);
+    removeUploadDraftFile(dataset) {
+      const index = parseInt(dataset.index, 10);
+      const currentState = store.getState();
+      const existingFiles = [...(currentState.ui.uploadDraft?.files || [])];
+      existingFiles.splice(index, 1);
+      
       update((state) => ({
         ...state,
         ui: {
           ...state.ui,
           uploadDraft: {
             ...state.ui.uploadDraft,
-            attachments,
+            files: existingFiles,
           },
         },
       }));
     },
+
     async createImportsFromUpload() {
       const currentState = store.getState();
       const draft = currentState.ui.uploadDraft;
@@ -1714,7 +1729,8 @@ export function createActions(store, backend = null, authService = null, storage
         setResourceState("imports", { status: "saving", error: null, completed, total });
 
         try {
-          const uploadPromises = files.map(async (file) => {
+          const results = [];
+          for (const file of files) {
             const formData = new FormData();
             formData.append("file", file, file.name || "import_file");
             formData.append("supplier_id", supplierId);
@@ -1722,28 +1738,27 @@ export function createActions(store, backend = null, authService = null, storage
             formData.append("document_type", draft.documentType || "price_list");
             formData.append("request_ref", draft.requestId || "");
             formData.append("manager_note", draft.managerNote || "");
-            
-            (draft.attachments || []).forEach((attachment, index) => {
-              formData.append(`attachment_${index}`, attachment, attachment.name);
-            });
 
-            const response = await backend.createImport(formData);
-            const createdImportId = response.item?.id;
+            try {
+              const response = await backend.createImport(formData);
+              const createdImportId = response.item?.id;
 
-            if (createdImportId) {
-              try {
-                await backend.dispatchImport(createdImportId, { source: "ui" });
-              } catch (dispatchError) {
-                console.warn("Failed to dispatch to n8n directly, continuing...", dispatchError);
+              if (createdImportId) {
+                try {
+                  await backend.dispatchImport(createdImportId, { source: "ui" });
+                } catch (dispatchError) {
+                  console.warn("Failed to dispatch to n8n directly, continuing...", dispatchError);
+                }
               }
+              results.push({ status: "fulfilled", value: createdImportId });
+            } catch (err) {
+              console.error("Upload failed for file", file.name, err);
+              results.push({ status: "rejected", reason: err });
             }
-
+            
             completed++;
             setResourceState("imports", { status: "saving", error: null, completed, total });
-            return createdImportId;
-          });
-
-          const results = await Promise.allSettled(uploadPromises);
+          }
           
           if (results.some((r) => r.status === "rejected")) {
             console.error("Upload errors:", results.filter(r => r.status === "rejected"));
