@@ -16,7 +16,7 @@ export const defaultQuoteTableColumns = {
 };
 
 export function createProductKey(importId, product) {
-  return `${importId}:${product.product_id || product.temp_id || \`row_\${product.row_index}\`}`;
+  return `${importId}:${product.product_id || product.temp_id || `row_${product.row_index}`}`;
 }
 
 export function createInitialState(payload = {}, options = {}) {
