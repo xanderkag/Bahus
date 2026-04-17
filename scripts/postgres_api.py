@@ -674,11 +674,12 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         content_type = self.headers.get("Content-Type", "")
         if "multipart/form-data" in content_type:
             import email.parser
+            from email.policy import HTTP
             content_length = int(self.headers.get("Content-Length"))
             body = self.rfile.read(content_length)
             
             msg_bytes = b"Content-Type: " + content_type.encode() + b"\r\n\r\n" + body
-            container = email.parser.BytesParser().parsebytes(msg_bytes)
+            container = email.parser.BytesParser(policy=HTTP).parsebytes(msg_bytes)
             
             payload = {}
             files = []

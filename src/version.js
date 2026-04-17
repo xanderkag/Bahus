@@ -1,5 +1,5 @@
 export const VERSION_INFO = {
-  version: "1.0.9",
-  commit: "modal-ui-redesign-and-loader",
+  version: "1.1.0",
+  commit: "fix-filename-encoding",
   date: new Date().toISOString()
 };
