@@ -24,6 +24,7 @@ We are in the **Production Maintenance** stage. The project has transitioned fro
 - **Mock Cleanup Status**: Fully Complete. All static artifacts, such as `src/data/demo-data.js`, have been deleted. Do not attempt to refer to `cl_...` or demo fake seeds in subsequent code structures.
 - **Auth**: Still client-side oriented. A full SSR/server-based auth flow could be considered next.
 - **Version Visibility Rule**: A permanent version string must ALWAYS be visible at the top of the frontend Interface (`src/views/layout.js`). The text must include the latest Git commit hash and build date. This avoids ambiguous state during caching or deployment. GitHub Actions must populate this via dynamically creating a temporary `src/version.js` on every Git Push!
+- **Commit Versioning Rule**: All git commit/push messages must contain a version tag (starting from `v1.0.0`) and the current date and time in Moscow time (UTC+3). Example format: `v1.0.0 (2026-04-17 12:00:00 MSK) - feature description`. This keeps deployment traces rigorously versioned.
 
 ## 🤖 n8n Workflow State
 The most up-to-date and active workflow reference is continuously stored in `n8n/bahus_production_workflow_v2.json`. 
