@@ -7,7 +7,9 @@ export function getStoredSidebarCollapsed() {
 }
 
 export function getStoredTheme() {
-  return window.localStorage.getItem("bahus:theme") || "dark";
+  const stored = window.localStorage.getItem("bahus:theme");
+  if (stored) return stored;
+  return window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
 }
 
 export function getBootstrapConfig() {

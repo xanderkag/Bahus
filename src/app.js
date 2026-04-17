@@ -10,6 +10,8 @@ import { createAppEventHandlers } from "./utils/dom.js";
 import { renderLayout } from "./views/layout.js";
 
 const root = document.getElementById("app");
+document.documentElement.dataset.theme = getStoredTheme();
+
 const IMPORT_STATUS_POLL_MS = 3000;
 
 function attachQuoteColumnResize(rootElement, store, actions) {
@@ -45,10 +47,10 @@ function attachQuoteColumnResize(rootElement, store, actions) {
 function renderBootMessage(title, message) {
   root.innerHTML = `
     <div style="min-height:100vh;display:grid;place-items:center;padding:24px;">
-      <div style="max-width:680px;width:100%;padding:24px;border:1px solid rgba(86,113,166,.24);border-radius:24px;background:rgba(12,21,39,.92);box-shadow:0 22px 50px rgba(2,8,23,.42);color:#ebf1ff;">
-        <div style="font-size:var(--text-xs);color:#92a4ca;margin-bottom:10px;">Bahus Assistant bootstrap</div>
+      <div style="max-width:680px;width:100%;padding:24px;border:1px solid var(--line);border-radius:var(--radius-xl);background:var(--panel-strong);box-shadow:var(--shadow);color:var(--text);">
+        <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:10px;">Bahus Assistant bootstrap</div>
         <h1 style="margin:0 0 10px;font-size:var(--text-xxl);">${title}</h1>
-        <p style="margin:0;color:#92a4ca;line-height:1.5;">${message}</p>
+        <p style="margin:0;color:var(--muted);line-height:1.5;">${message}</p>
       </div>
     </div>
   `;
