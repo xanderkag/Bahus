@@ -115,6 +115,7 @@ async function main() {
   function shouldPollImportStatus(state) {
     if (state.runtime?.dataSource !== "local-api") return false;
     if (state.ui.activeView !== "overview") return false;
+    if (state.ui.modal) return false; // Pause polling when any modal is open
     const importId = state.ui.selectedImportId;
     if (!importId) return false;
     const status = state.entities.importsById[importId]?.status;
