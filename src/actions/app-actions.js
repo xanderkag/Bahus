@@ -1727,8 +1727,13 @@ export function createActions(store, backend = null, authService = null, storage
             const response = await backend.createImport(formData);
             const createdImportId = response.item?.id;
             if (!createdImportId) continue;
-            await backend.dispatchImport(createdImportId, { source: "ui" });
+            
             createdImports.push(createdImportId);
+            try {
+              await backend.dispatchImport(createdImportId, { source: "ui" });
+            } catch (dispatchError) {
+              console.warn("Failed to dispatch to n8n directly, continuing...", dispatchError);
+            }
           }
 
           await loadImportsResource();

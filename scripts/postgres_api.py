@@ -930,24 +930,16 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             )
             conn.commit()
 
-        dispatch_result = None
         if self.config.n8n_webhook_url:
-            try:
-                dispatch_result = self.dispatch_to_n8n(dispatch_payload)
-            except Exception as error:  # pragma: no cover - network path
-                return self.respond_json(
-                    {
-                        "error": "Failed to dispatch to n8n",
-                        "details": str(error),
-                        "item": {
-                            "import_id": import_id,
-                            "job_id": job_id,
-                            "status": "queued",
-                        },
-                    },
-                    status=HTTPStatus.BAD_GATEWAY,
-                )
-
+            import threading
+            def run_dispatch():
+                try:
+                    self.dispatch_to_n8n(dispatch_payload)
+                except Exception as error:
+                    logger.error(f"Failed to dispatch to n8n in background: {error}")
+                    
+            threading.Thread(target=run_dispatch, daemon=True).start()
+            
         return self.respond_json(
             {
                 "item": {
@@ -955,7 +947,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                     "job_id": job_id,
                     "status": "queued",
                 },
-                "dispatch": dispatch_result,
+                "dispatch": "queued",
             },
             status=HTTPStatus.CREATED,
         )
