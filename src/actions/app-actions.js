@@ -1868,6 +1868,25 @@ export function createActions(store, backend = null, authService = null, storage
         };
       });
     },
+    async dispatchSelectedImport() {
+      const state = store.getState();
+      const importId = state.ui.selectedImportId;
+      if (!importId) return;
+
+      setResourceState("imports", { status: "saving", error: null });
+      try {
+        await backend.dispatchImport(importId, { source: "ui", force: true });
+        await Promise.all([
+          loadImportsResource(),
+          loadImportStatusResource(importId)
+        ]);
+        alert("Запрос на обработку отправлен в n8n!");
+      } catch (err) {
+        console.error("Failed to dispatch import to N8N", err);
+        setResourceState("imports", { status: "error", error: err.message });
+        alert(`Ошибка отправки: ${err.message}`);
+      }
+    },
     async deleteSelectedImport() {
       const state = store.getState();
       const importId = state.ui.selectedImportId;

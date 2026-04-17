@@ -32,6 +32,19 @@ function formatImportStatus(status) {
   return labels[status] || formatValue(status);
 }
 
+function getImportStatusClass(status) {
+  switch (status) {
+    case "success": return "status-good";
+    case "parsed": return "status-good";
+    case "partial": return "status-warn";
+    case "error": return "status-bad";
+    case "failed": return "status-bad";
+    case "pending": return "status-warn";
+    case "queued": return "status-default";
+    default: return "";
+  }
+}
+
 function formatDocumentType(type) {
   const labels = {
     net_price: "Нетто-прайс",
@@ -287,7 +300,7 @@ function renderImportsTable(state) {
           <td>${escapeHtml(item.meta.source_format.toUpperCase())}</td>
           <td>${escapeHtml(formatValue(supplier?.name))}</td>
           <td>${escapeHtml(formatDocumentType(item.meta.document_type))}</td>
-          <td><span class="status-pill">${escapeHtml(formatImportStatus(item.status))}</span></td>
+          <td><span class="status-pill ${getImportStatusClass(item.status)}">${escapeHtml(formatImportStatus(item.status))}</span></td>
           <td><span class="pill">${issueCount} проблем</span></td>
         </tr>
       `;
@@ -987,6 +1000,7 @@ export function renderOverview(state) {
             </div>
             <div class="toolbar-actions overview-table-actions">
               <button class="ghost-btn icon-action-btn table-add-btn" data-action="openUploadFilesModal" title="Загрузить прайс-лист">+</button>
+              <button class="ghost-btn compact-action-btn" data-action="dispatchSelectedImport" ${!state.ui.selectedImportId ? "disabled" : ""} title="Отправить обрабатывать ИИ">✨ ИИ</button>
               <button class="ghost-btn icon-action-btn table-danger-btn" data-action="openConfirmDeleteImportModal" ${!state.ui.selectedImportId ? "disabled" : ""} title="Удалить выбранный прайс">🗑️</button>
               <button class="ghost-btn compact-action-btn" data-action="openExportModal" title="Экспорт списка">Экспорт</button>
             </div>
