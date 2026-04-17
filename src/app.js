@@ -46,7 +46,7 @@ function renderBootMessage(title, message) {
   root.innerHTML = `
     <div style="min-height:100vh;display:grid;place-items:center;padding:24px;">
       <div style="max-width:680px;width:100%;padding:24px;border:1px solid rgba(86,113,166,.24);border-radius:24px;background:rgba(12,21,39,.92);box-shadow:0 22px 50px rgba(2,8,23,.42);color:#ebf1ff;">
-        <div style="font-size:12px;color:#92a4ca;margin-bottom:10px;">Bakhus Assistant bootstrap</div>
+        <div style="font-size:12px;color:#92a4ca;margin-bottom:10px;">Bahus Assistant bootstrap</div>
         <h1 style="margin:0 0 10px;font-size:28px;">${title}</h1>
         <p style="margin:0;color:#92a4ca;line-height:1.5;">${message}</p>
       </div>
@@ -66,7 +66,7 @@ async function bootstrapState() {
     document.body.innerHTML = `
       <div style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #0b1120; color: #ff6b6b; text-align: center; padding: 2rem;">
         <h1 style="margin-bottom: 1rem;">Ошибка запуска приложения</h1>
-        <p style="color: #94a3b8; max-width: 600px; line-height: 1.5;">Не удалось подключиться к бэкенду Bakhus: <b>${error.message}</b></p>
+        <p style="color: #94a3b8; max-width: 600px; line-height: 1.5;">Не удалось подключиться к бэкенду Bahus: <b>${error.message}</b></p>
         <p style="color: #94a3b8; max-width: 600px; margin-top: 1rem; font-size: 0.9em;">Убедитесь, что сервер доступен по адресу ${config.apiBaseUrl}</p>
       </div>
     `;
@@ -75,7 +75,7 @@ async function bootstrapState() {
 }
 
 async function main() {
-  renderBootMessage("Загрузка workspace", "Подключаемся к Bakhus API...");
+  renderBootMessage("Загрузка workspace", "Подключаемся к Bahus API...");
   const config = getBootstrapConfig();
   const initialState = await bootstrapState();
   initialState.ui = {

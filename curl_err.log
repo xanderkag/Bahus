@@ -1,0 +1,62 @@
+* Host bahus-production.up.railway.app:443 was resolved.
+* IPv6: (none)
+* IPv4: 151.101.2.15
+*   Trying 151.101.2.15:443...
+* Connected to bahus-production.up.railway.app (151.101.2.15) port 443
+* ALPN: curl offers h2,http/1.1
+* (304) (OUT), TLS handshake, Client hello (1):
+} [336 bytes data]
+*  CAfile: /etc/ssl/cert.pem
+*  CApath: none
+* (304) (IN), TLS handshake, Server hello (2):
+{ [122 bytes data]
+* (304) (IN), TLS handshake, Unknown (8):
+{ [19 bytes data]
+* (304) (IN), TLS handshake, Certificate (11):
+{ [2844 bytes data]
+* (304) (IN), TLS handshake, CERT verify (15):
+{ [520 bytes data]
+* (304) (IN), TLS handshake, Finished (20):
+{ [36 bytes data]
+* (304) (OUT), TLS handshake, Finished (20):
+} [36 bytes data]
+* SSL connection using TLSv1.3 / AEAD-CHACHA20-POLY1305-SHA256 / [blank] / UNDEF
+* ALPN: server accepted h2
+* Server certificate:
+*  subject: CN=*.up.railway.app
+*  start date: Apr  5 14:01:40 2026 GMT
+*  expire date: Jul  4 14:01:39 2026 GMT
+*  subjectAltName: host "bahus-production.up.railway.app" matched cert's "*.up.railway.app"
+*  issuer: C=US; O=Let's Encrypt; CN=R12
+*  SSL certificate verify ok.
+* using HTTP/2
+* [HTTP/2] [1] OPENED stream for https://bahus-production.up.railway.app/api/bootstrap
+* [HTTP/2] [1] [:method: GET]
+* [HTTP/2] [1] [:scheme: https]
+* [HTTP/2] [1] [:authority: bahus-production.up.railway.app]
+* [HTTP/2] [1] [:path: /api/bootstrap]
+* [HTTP/2] [1] [user-agent: curl/8.7.1]
+* [HTTP/2] [1] [accept: */*]
+> GET /api/bootstrap HTTP/2
+> Host: bahus-production.up.railway.app
+> User-Agent: curl/8.7.1
+> Accept: */*
+> 
+* Request completely sent off
+< HTTP/2 500 
+< access-control-allow-headers: Content-Type, Authorization
+< access-control-allow-methods: GET, POST, PUT, DELETE, PATCH, OPTIONS
+< access-control-allow-origin: *
+< x-railway-cdn-edge: fastly/cache-ewr-kewr1740086-EWR
+< content-type: application/json; charset=utf-8
+< date: Fri, 17 Apr 2026 09:30:59 GMT
+< server: railway-edge
+< x-railway-edge: railway/us-east4-eqdc4a
+< x-railway-request-id: BZhRIY8PQkqphW4aGbGh5g
+< x-cache: MISS
+< x-cache-hits: 0
+< x-served-by: cache-ewr-kewr1740086-EWR
+< content-length: 1046
+< 
+{ [850 bytes data]
+* Connection #0 to host bahus-production.up.railway.app left intact

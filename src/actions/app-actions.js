@@ -1777,8 +1777,8 @@ export function createActions(store, backend = null, authService = null, storage
           importsById[importId] = {
             id: importId,
             supplier_id: supplierId,
-            created_by: "manager@bakhus",
-            owner: "manager@bakhus",
+            created_by: "manager@bahus",
+            owner: "manager@bahus",
             source: draft.requestId ? `Запрос ${draft.requestId}` : "UI upload",
             status: "uploaded",
             meta: {

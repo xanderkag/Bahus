@@ -1,4 +1,4 @@
-const SESSION_KEY = "bakhus:auth:session";
+const SESSION_KEY = "bahus:auth:session";
 
 const MASTER_USER = {
   uid: "usr_master",

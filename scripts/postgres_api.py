@@ -25,7 +25,7 @@ logging.basicConfig(
     format='%(asctime)s [%(levelname)s] %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
-logger = logging.getLogger("bakhus-api")
+logger = logging.getLogger("bahus-api")
 
 import logging.handlers
 log_dir = Path(__file__).resolve().parent.parent / ".local" / "logs"
@@ -52,7 +52,7 @@ UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Bakhus Assistant PostgreSQL API")
+    parser = argparse.ArgumentParser(description="bahus Assistant PostgreSQL API")
     parser.add_argument("--host", default=os.getenv("API_HOST", "0.0.0.0"))
     parser.add_argument("--port", type=int, default=int(os.getenv("PORT") or os.getenv("API_PORT") or 8080))
     return parser.parse_args()
@@ -112,13 +112,13 @@ class AppConfig:
 def build_config() -> AppConfig:
     db_dsn = os.getenv(
         "DATABASE_URL",
-        "postgresql://bakhus:bakhus@127.0.0.1:5432/bakhus",
+        "postgresql://bahus:bahus@127.0.0.1:5432/bahus",
     )
     return AppConfig(
         db_dsn=db_dsn,
         n8n_webhook_url=os.getenv("N8N_IMPORT_WEBHOOK_URL"),
         public_file_base_url=os.getenv("PUBLIC_FILE_BASE_URL"),
-        default_user_email=os.getenv("DEFAULT_MANAGER_EMAIL", "manager@bakhus"),
+        default_user_email=os.getenv("DEFAULT_MANAGER_EMAIL", "manager@bahus"),
     )
 
 
@@ -162,7 +162,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         query = parse_qs(parsed.query)
 
         if route in {"/health", "/api/health"}:
-            return self.respond_json({"status": "ok", "service": "bakhus-postgres-api"})
+            return self.respond_json({"status": "ok", "service": "bahus-postgres-api"})
         if route == "/api/bootstrap":
             return self.handle_bootstrap()
         if route == "/api/imports":
@@ -822,7 +822,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             logger.info(f"Dispatching to n8n: {self.config.n8n_webhook_url}")
             # We use PUBLIC_API_URL context (hardcoded logic in original script preserved for Origin)
             headers = {
-                'User-Agent': 'Bakhus-API/1.0',
+                'User-Agent': 'bahus-API/1.0',
             }
             
             response = requests.post(
@@ -1505,7 +1505,7 @@ def cleanup_worker():
 def main() -> None:
     args = parse_args()
     server = ThreadingHTTPServer((args.host, args.port), PostgresApiHandler)
-    logger.info(f"Bakhus PostgreSQL API running at http://{args.host}:{args.port}")
+    logger.info(f"bahus PostgreSQL API running at http://{args.host}:{args.port}")
     
     # Start the background cleanup thread
     cleanup_thread = threading.Thread(target=cleanup_worker, daemon=True)

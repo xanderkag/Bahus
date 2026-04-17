@@ -38,29 +38,13 @@ function renderAuthGate(state) {
   return `
     <div class="auth-shell">
       <div class="auth-card">
-        <div class="auth-hero">
-          <div class="auth-brand">
-            <div class="auth-brand-mark">
-              <img class="auth-brand-logo" src="src/assets/bahus-logo.jpg" alt="Логотип Бахус" />
-            </div>
-            <div>
-              <div class="brand-title">Bakhus Assistant</div>
-              <div class="brand-subtitle">Закрытый рабочий контур для импорта, review и КП</div>
-            </div>
-          </div>
-          <div class="auth-badge">Private Beta / Master Account</div>
-        </div>
-        <div class="auth-copy">
-          <h1>Войти в workspace</h1>
-          <p>Вход по корпоративным учетным данным. Если у вас нет доступа — обратитесь к администратору.</p>
-        </div>
+        <h1 class="auth-title">Bahus</h1>
         
         <div class="auth-form">
           <div class="form-stack">
-            <label class="field-label">Логин</label>
             <input 
               type="text" 
-              class="input" 
+              class="input auth-input" 
               placeholder="Username" 
               value="${escapeHtml(draft.username || "")}" 
               data-input="setLoginDraftField" 
@@ -69,10 +53,9 @@ function renderAuthGate(state) {
             />
           </div>
           <div class="form-stack">
-            <label class="field-label">Пароль</label>
             <input 
               type="password" 
-              class="input" 
+              class="input auth-input" 
               placeholder="Password" 
               value="${escapeHtml(draft.password || "")}" 
               data-input="setLoginDraftField" 
@@ -83,10 +66,10 @@ function renderAuthGate(state) {
         </div>
 
         <div class="auth-actions">
-          <button class="primary-btn full-width" data-action="signInMaster" ${isLoading ? "disabled" : ""}>
-            ${isLoading ? "Входим в систему..." : "Войти в Bahus"}
+          <button class="primary-btn auth-submit-btn full-width" data-action="signInMaster" ${isLoading ? "disabled" : ""}>
+            ${isLoading ? "Вход..." : "Войти"}
           </button>
-          ${auth.error ? `<div class="hint hint-error auth-status">${escapeHtml(auth.error)}</div>` : '<div class="hint auth-status">Введите ваши учетные данные для доступа к рабочему контуру.</div>'}
+          ${auth.error ? `<div class="hint hint-error auth-status">${escapeHtml(auth.error)}</div>` : ''}
         </div>
       </div>
     </div>
@@ -421,7 +404,7 @@ export function renderLayout(state) {
           <div class="brand-identity">
             <div class="brand-mark"></div>
             <div class="brand-copy">
-              <div class="brand-title">Bakhus Assistant</div>
+              <div class="brand-title">Bahus Assistant</div>
               <div class="brand-subtitle">local workspace</div>
             </div>
           </div>
@@ -459,7 +442,7 @@ export function renderLayout(state) {
       <main class="main">
         <header class="topbar">
           <div>
-            <div class="eyebrow">Bakhus Assistant / Workspace <span class="pill pill-accent" style="margin-left: 8px; font-variant-numeric: tabular-nums;" title="Обновлено: ${escapeHtml(VERSION_INFO.date)}">v${escapeHtml(VERSION_INFO.version)} (${escapeHtml(VERSION_INFO.commit)})</span></div>
+            <div class="eyebrow">Bahus Assistant / Workspace <span class="pill pill-accent" style="margin-left: 8px; font-variant-numeric: tabular-nums;" title="Обновлено: ${escapeHtml(VERSION_INFO.date)}">v${escapeHtml(VERSION_INFO.version)} (${escapeHtml(VERSION_INFO.commit)})</span></div>
             <h1>${meta.title}</h1>
             ${meta.subtitle ? `<p>${meta.subtitle}</p>` : ""}
             ${

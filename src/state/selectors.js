@@ -25,7 +25,7 @@ export function getCurrentImportProducts(state) {
 export function getProductsByScope(state) {
   const all = state.entities.productOrder.map((id) => state.entities.productsById[id]);
   if (state.ui.scope === "all") return all;
-  const allowedOwners = new Set(["manager@bakhus", "manager"]);
+  const allowedOwners = new Set(["manager@bahus", "manager"]);
   return all.filter((product) => {
     const importRecord = state.entities.importsById[product.import_id];
     return allowedOwners.has(importRecord.owner) || allowedOwners.has(importRecord.created_by);

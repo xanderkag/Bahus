@@ -3,15 +3,15 @@ function queryParam(name) {
 }
 
 export function getStoredSidebarCollapsed() {
-  return window.localStorage.getItem("bakhus:sidebarCollapsed") === "1";
+  return window.localStorage.getItem("bahus:sidebarCollapsed") === "1";
 }
 
 export function getStoredTheme() {
-  return window.localStorage.getItem("bakhus:theme") || "dark";
+  return window.localStorage.getItem("bahus:theme") || "dark";
 }
 
 export function getBootstrapConfig() {
-  const requestedSource = queryParam("dataSource") || window.localStorage.getItem("bakhus:dataSource") || "auto";
+  const requestedSource = queryParam("dataSource") || window.localStorage.getItem("bahus:dataSource") || "auto";
 
   return {
     requestedSource,
@@ -20,13 +20,13 @@ export function getBootstrapConfig() {
 }
 
 export function persistDataSource(source) {
-  window.localStorage.setItem("bakhus:dataSource", source);
+  window.localStorage.setItem("bahus:dataSource", source);
 }
 
 export function persistSidebarCollapsed(collapsed) {
-  window.localStorage.setItem("bakhus:sidebarCollapsed", collapsed ? "1" : "0");
+  window.localStorage.setItem("bahus:sidebarCollapsed", collapsed ? "1" : "0");
 }
 
 export function persistTheme(theme) {
-  window.localStorage.setItem("bakhus:theme", theme);
+  window.localStorage.setItem("bahus:theme", theme);
 }

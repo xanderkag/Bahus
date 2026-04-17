@@ -1,0 +1,19 @@
+Traceback (most recent call last):
+  File "/app/scripts/postgres_api.py", line 151, in do_GET
+    self._do_GET_internal()
+  File "/app/scripts/postgres_api.py", line 167, in _do_GET_internal
+    return self.handle_bootstrap()
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/scripts/postgres_api.py", line 513, in handle_bootstrap
+    with self.db() as conn:
+         ^^^^^^^^^
+  File "/app/scripts/postgres_api.py", line 265, in db
+    raise last_exc
+  File "/app/scripts/postgres_api.py", line 260, in db
+    return psycopg.connect(self.config.db_dsn, row_factory=dict_row)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/psycopg/connection.py", line 118, in connect
+    raise last_ex.with_traceback(None)
+psycopg.OperationalError: connection is bad: connection to server at "2a05:d016:571:a427:6da1:7688:6063:7066", port 5432 failed: Network is unreachable
+	Is the server running on that host and accepting TCP/IP connections?
+

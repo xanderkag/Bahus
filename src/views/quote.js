@@ -496,7 +496,7 @@ function renderPreview(state) {
           <p>№ ${escapeHtml(meta.quoteNumber)} от ${escapeHtml(meta.quoteDate)}</p>
         </div>
         <div class="preview-company">
-          <strong>Bakhus Assistant</strong>
+          <strong>Bahus Assistant</strong>
           <span>Менеджер: ${escapeHtml(meta.managerName || "—")}</span>
           <span>Режим: ${meta.mode === "internal" ? "внутренний" : "клиентский"}</span>
         </div>
