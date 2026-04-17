@@ -123,6 +123,7 @@ def build_config() -> AppConfig:
 
 
 class PostgresApiHandler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
     config = build_config()
 
     def log_message(self, fmt: str, *args) -> None:
