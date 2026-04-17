@@ -243,88 +243,106 @@ function renderUploadFilesModal(state) {
           </div>
           <button class="ghost-btn" data-action="closeModal">Закрыть</button>
         </div>
-        <div class="form-grid">
-          <select class="input" data-change="setUploadDraftField" data-field="supplierId">
-            ${suppliers
-              .map(
-                (supplier) =>
-                  `<option value="${supplier.id}" ${draft.supplierId === supplier.id ? "selected" : ""}>${escapeHtml(supplier.name)}</option>`,
-              )
-              .join("")}
-          </select>
-          <select class="input" data-change="setUploadDraftField" data-field="documentType">
-            <option value="price_list" ${draft.documentType === "price_list" ? "selected" : ""}>Общий прайс</option>
-            <option value="promo" ${draft.documentType === "promo" ? "selected" : ""}>Акция / promo</option>
-            <option value="request_offer" ${draft.documentType === "request_offer" ? "selected" : ""}>Под конкретный запрос</option>
-          </select>
-        </div>
-        <input class="input" placeholder="Связанный запрос / номер КП (опционально)" value="${escapeHtml(draft.requestId || "")}" data-input="setUploadDraftField" data-field="requestId" />
-        <div class="form-stack">
-          <label class="field-label">Файлы поставщика</label>
-          <label class="upload-dropzone">
-            <input class="upload-dropzone-input-hidden" type="file" multiple data-change="setUploadDraftFiles" />
-            <strong>Перетащите прайс сюда или выберите файлы</strong>
-            <span>Подходят Excel, PDF и другие входящие файлы поставщика.</span>
-          </label>
-          ${
-            draft.files?.length
-              ? `
-                  <div class="upload-file-list">
-                    ${draft.files
-                      .map(
-                        (file) => `
-                          <div class="upload-file-pill">
-                            <strong>${escapeHtml(file.name)}</strong>
-                            <span>${escapeHtml(formatValue(file.type))} · ${escapeHtml(formatValue(file.size))} bytes</span>
-                          </div>
-                        `,
-                      )
-                      .join("")}
-                  </div>
-                `
-              : '<div class="hint">Можно выбрать несколько файлов. При работе через API каждый файл создаётся как отдельный импорт и сразу отправляется в обработку.</div>'
-          }
-        </div>
-        <div class="form-stack">
-          <label class="field-label">Дополнительные вложения</label>
-          <label class="upload-dropzone">
-            <input class="upload-dropzone-input-hidden" type="file" multiple data-change="setUploadDraftAttachments" />
-            <strong>Перетащите вложения сюда</strong>
-            <span>Например: запрос клиента, сопроводительный PDF, таблицы или любые связанные файлы.</span>
-          </label>
-          ${
-            draft.attachments?.length
-              ? `
-                  <div class="upload-file-list">
-                    ${draft.attachments
-                      .map(
-                        (file) => `
-                          <div class="upload-file-pill">
-                            <strong>${escapeHtml(file.name)}</strong>
-                            <span>${escapeHtml(formatValue(file.type))} · ${escapeHtml(formatValue(file.size))} bytes</span>
-                          </div>
-                        `,
-                      )
-                      .join("")}
-                  </div>
-                `
-              : '<div class="hint">Вложения сохраняются вместе с импортом как дополнительные материалы по запросу или поставке.</div>'
-          }
-          <textarea class="input textarea compact-textarea" placeholder="Комментарий к импорту или вложениям" data-input="setUploadDraftField" data-field="managerNote">${escapeHtml(draft.managerNote || "")}</textarea>
-        </div>
-        <div class="inline-card">
-          <div class="inline-card-header">
-            <strong>Как это работает для менеджера</strong>
+        <div class="panel" style="display:flex; flex-direction:column; gap:16px; margin-bottom:16px;">
+          <h4 style="margin:0; font-size:var(--text-sm); color:var(--text);">Параметры импорта</h4>
+          <div class="form-grid">
+            <div class="form-stack">
+              <label class="field-label">Поставщик</label>
+              <select class="input" data-change="setUploadDraftField" data-field="supplierId">
+                ${suppliers
+                  .map(
+                    (supplier) =>
+                      `<option value="${supplier.id}" ${draft.supplierId === supplier.id ? "selected" : ""}>${escapeHtml(supplier.name)}</option>`,
+                  )
+                  .join("")}
+              </select>
+            </div>
+            <div class="form-stack">
+              <label class="field-label">Категория прайса</label>
+              <select class="input" data-change="setUploadDraftField" data-field="documentType">
+                <option value="price_list" ${draft.documentType === "price_list" ? "selected" : ""}>Общий прайс</option>
+                <option value="promo" ${draft.documentType === "promo" ? "selected" : ""}>Акция / promo</option>
+                <option value="request_offer" ${draft.documentType === "request_offer" ? "selected" : ""}>Под конкретный запрос</option>
+              </select>
+            </div>
           </div>
-          <div class="hint">
-            Сценарий такой: вы добавляете прайс и при необходимости прикладываете дополнительные файлы по запросу. Импорт создаётся как рабочая сущность с файлом-источником, затем сразу уходит в processing-контур.
+          <div class="form-stack">
+            <label class="field-label">Связанный запрос / номер КП (опционально)</label>
+            <input class="input" placeholder="Например: Запрос на комплектующие от Лукойл..." value="${escapeHtml(draft.requestId || "")}" data-input="setUploadDraftField" data-field="requestId" />
+          </div>
+        </div>
+
+        <div class="panel" style="display:flex; flex-direction:column; gap:16px; margin-bottom:16px;">
+          <h4 style="margin:0; font-size:var(--text-sm); color:var(--text);">Медиа и файлы</h4>
+          <div class="form-stack">
+            <label class="field-label">Прайс-лист поставщика</label>
+            <label class="upload-dropzone">
+              <input class="upload-dropzone-input-hidden" type="file" multiple data-change="setUploadDraftFiles" />
+              <strong>Перетащите прайс сюда или выберите файлы</strong>
+              <span>Подходят Excel, PDF и другие входящие файлы поставщика.</span>
+            </label>
+            ${
+              draft.files?.length
+                ? `
+                    <div class="upload-file-list">
+                      ${draft.files
+                        .map(
+                          (file) => `
+                            <div class="upload-file-pill">
+                              <strong>${escapeHtml(file.name)}</strong>
+                              <span>${escapeHtml(formatValue(file.type))} · ${escapeHtml(formatValue(file.size))} bytes</span>
+                            </div>
+                          `,
+                        )
+                        .join("")}
+                    </div>
+                  `
+                : '<div class="hint">Можно выбрать несколько файлов. Каждый файл создаётся как отдельный импорт.</div>'
+            }
+          </div>
+          <div class="form-stack">
+            <label class="field-label">Дополнительные вложения</label>
+            <label class="upload-dropzone">
+              <input class="upload-dropzone-input-hidden" type="file" multiple data-change="setUploadDraftAttachments" />
+              <strong>Перетащите вложения сюда</strong>
+              <span>Например: сопроводительный PDF или таблицы по акции.</span>
+            </label>
+            ${
+              draft.attachments?.length
+                ? `
+                    <div class="upload-file-list">
+                      ${draft.attachments
+                        .map(
+                          (file) => `
+                            <div class="upload-file-pill">
+                              <strong>${escapeHtml(file.name)}</strong>
+                              <span>${escapeHtml(formatValue(file.type))} · ${escapeHtml(formatValue(file.size))} bytes</span>
+                            </div>
+                          `,
+                        )
+                        .join("")}
+                    </div>
+                  `
+                : ""
+            }
+          </div>
+        </div>
+
+        <div class="form-stack" style="margin-bottom:16px;">
+          <label class="field-label">Комментарий к импорту</label>
+          <textarea class="input textarea compact-textarea" placeholder="Укажите важные детали или комментарии для себя..." data-input="setUploadDraftField" data-field="managerNote">${escapeHtml(draft.managerNote || "")}</textarea>
+        </div>
+
+        <div class="inline-card">
+          <div class="hint" style="margin:0;">
+            <strong>Как это работает</strong>: Импорт будет загружен в защищенное хранилище и сразу встанет в очередь фоновой ИИ-обработки.
           </div>
         </div>
         ${importsResource.error ? `<div class="hint hint-error">Не удалось создать импорт: ${escapeHtml(importsResource.error)}</div>` : ""}
         <div class="toolbar-actions justify-end">
           <button class="ghost-btn" data-action="closeModal">Отмена</button>
-          <button class="primary-btn" data-action="createImportsFromUpload" ${isSubmitting ? "disabled" : ""}>
-            ${isSubmitting ? "Создаём и отправляем..." : "Создать импорт"}
+          <button class="primary-btn" data-action="createImportsFromUpload" ${isSubmitting ? "disabled" : ""} style="display:flex; align-items:center; gap:8px;">
+            ${isSubmitting ? '<div class="boot-loader" style="width:14px;height:14px;border-width:2px;"></div>Отправка файлов...' : "Создать импорт"}
           </button>
         </div>
       </div>
