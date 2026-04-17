@@ -23,6 +23,13 @@
     radial-gradient(circle at top left, rgba(70, 130, 195, 0.16), transparent 24%),
     radial-gradient(circle at top right, rgba(48, 91, 156, 0.14), transparent 20%),
     linear-gradient(180deg, #040915 0%, #07111f 44%, #050b16 100%);
+  --font-sans: "Inter", "Segoe UI", "SF Pro Display", "Roboto", "Arial", sans-serif;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-lg: 18px;
+  --text-xl: 22px;
+  --text-xxl: 32px;
 }
 
 :root[data-theme="light"] {
