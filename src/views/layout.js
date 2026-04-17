@@ -381,28 +381,6 @@ function renderExportModal(state) {
   `;
 }
 
-function renderConfirmDeleteImportModal(state) {
-  if (state.ui.modal !== "confirm-delete-import") return "";
-  return `
-    <div class="modal-overlay">
-      <div class="app-dialog compact-dialog" style="width: min(440px, 92vw);">
-        <div class="dialog-header">
-          <h3>Удалить прайс-лист?</h3>
-          <button class="ghost-btn compact-action-btn icon-action-btn" data-action="closeModal">×</button>
-        </div>
-        <div class="form-stack" style="margin-bottom:24px;">
-          <p>Вы собираетесь безвозвратно удалить файл импорта. <strong>Все загруженные позиции и ошибки, связанные с этим файлом, также будут удалены из системы.</strong></p>
-          <p style="margin-top:8px;">Восстановить данные будет невозможно.</p>
-        </div>
-        <div class="toolbar-actions justify-end">
-          <button class="ghost-btn" data-action="closeModal">Отмена</button>
-          <button class="primary-btn" style="background:var(--danger); color:white; border:none;" data-action="deleteSelectedImport">Да, удалить</button>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
 export function renderLayout(state) {
   if (state.settings?.auth_enabled && !state.auth?.currentUser) {
     return renderAuthGate(state);
@@ -497,7 +475,6 @@ export function renderLayout(state) {
       ${renderNewQuoteModal(state)}
       ${renderUploadFilesModal(state)}
       ${renderExportModal(state)}
-      ${renderConfirmDeleteImportModal(state)}
     </div>
   `;
 }

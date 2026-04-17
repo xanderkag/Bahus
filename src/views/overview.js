@@ -1001,7 +1001,6 @@ export function renderOverview(state) {
             <div class="toolbar-actions overview-table-actions">
               <button class="ghost-btn icon-action-btn table-add-btn" data-action="openUploadFilesModal" title="Загрузить прайс-лист">+</button>
               <button class="ghost-btn compact-action-btn" data-action="dispatchSelectedImport" ${!state.ui.selectedImportId ? "disabled" : ""} title="Отправить обрабатывать ИИ">✨ ИИ</button>
-              <button class="ghost-btn icon-action-btn table-danger-btn" data-action="openConfirmDeleteImportModal" ${!state.ui.selectedImportId ? "disabled" : ""} title="Удалить выбранный прайс">🗑️</button>
               <button class="ghost-btn compact-action-btn" data-action="openExportModal" title="Экспорт списка">Экспорт</button>
             </div>
           </div>

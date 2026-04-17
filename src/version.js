@@ -1,5 +1,5 @@
 export const VERSION_INFO = {
-  version: "1.1.11",
-  commit: "native-xhr-upload-progress",
+  version: "1.1.12",
+  commit: "remove-import-deletion",
   date: new Date().toISOString()
 };
