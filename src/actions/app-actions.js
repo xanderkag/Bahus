@@ -54,7 +54,7 @@ function deriveQuoteAiState(meta = {}, settings = {}) {
   if (!hasRealWorkflowEndpoint) {
     return {
       status: "idle",
-      note: "КП создано. Автообработка ИИ не запущена: webhook n8n для КП пока не настроен.",
+      note: "КП создано. Автообработка ИИ не запущена: webhook для внешней обработки пока не настроен.",
       canRun: false,
     };
   }
@@ -69,7 +69,7 @@ function deriveQuoteAiState(meta = {}, settings = {}) {
 
   return {
     status: "queued",
-    note: "КП создано. Можно сразу запускать обработку ИИ и отправлять файл в n8n.",
+    note: "КП создано. Можно сразу запускать ИИ-обработку и отправлять файл.",
     canRun: true,
   };
 }
@@ -554,7 +554,7 @@ export function createActions(store, backend = null, authService = null, storage
     const hasInput = Boolean(currentMeta.requestFiles?.length || currentMeta.note);
     if (!hasInput) return;
 
-    if (!aiState.canRun && aiState.note.includes("webhook n8n")) {
+    if (!aiState.canRun && aiState.note.includes("пока не настроен")) {
       update((state) => syncSelectedQuoteRecord({
         ...state,
         quote: {
@@ -593,7 +593,7 @@ export function createActions(store, backend = null, authService = null, storage
         meta: {
           ...getQuoteMeta(state),
           aiProcessingStatus: "queued",
-          aiProcessingNote: "Отправляем файл и контекст запроса в n8n.",
+          aiProcessingNote: "Отправляем файл и контекст на ИИ-обработку.",
           aiLastRunAt: new Date().toISOString(),
         },
       },
@@ -624,7 +624,7 @@ export function createActions(store, backend = null, authService = null, storage
           payload = null;
         }
         if (!response.ok) {
-          throw new Error(payload?.message || `n8n вернул ${response.status}`);
+          throw new Error(payload?.message || `Внешний сервис вернул ${response.status}`);
         }
         update((state) => syncSelectedQuoteRecord({
           ...state,
@@ -633,7 +633,7 @@ export function createActions(store, backend = null, authService = null, storage
             meta: {
               ...getQuoteMeta(state),
               aiProcessingStatus: "ready",
-              aiProcessingNote: "Файл и контекст отправлены в n8n. Если дальше есть callback, можно привязать следующий шаг к Bahus.",
+              aiProcessingNote: "Файл и контекст отправлены на внешнюю обработку. Ожидаем результат.",
               aiLastRunAt: getQuoteMeta(state).aiLastRunAt || new Date().toISOString(),
             },
           },
@@ -647,7 +647,7 @@ export function createActions(store, backend = null, authService = null, storage
             meta: {
               ...getQuoteMeta(state),
               aiProcessingStatus: "error",
-              aiProcessingNote: error?.message || "Не удалось отправить запрос в n8n.",
+              aiProcessingNote: error?.message || "Не удалось отправить запрос на внешнюю обработку.",
               aiLastRunAt: getQuoteMeta(state).aiLastRunAt || new Date().toISOString(),
             },
           },
@@ -1450,8 +1450,7 @@ export function createActions(store, backend = null, authService = null, storage
               ...current.ui.newQuoteDraft,
               requestFiles: uploadedFiles.slice(0, 1),
               uploadStatus: "ready",
-              uploadProgress: 100,
-              uploadStage: "Файл загружен и готов к отправке в n8n",
+              uploadStage: "Файл загружен и готов к отправке на ИИ-обработку",
               uploadLog: [
                 {
                   id: makeId("upl"),
@@ -1489,8 +1488,7 @@ export function createActions(store, backend = null, authService = null, storage
                 },
                 {
                   id: makeId("upl"),
-                  level: "info",
-                  message: "Можно продолжать работу и создать КП. Позже подключим отправку этого файла в n8n напрямую или через storage.",
+                  message: "Можно продолжать работу и создать КП. Позже подключим отправку этого файла на внешнюю ИИ-обработку напрямую или через storage.",
                 },
               ],
               uploadError: error?.message || "Storage недоступен, файл сохранён только в черновике.",
@@ -2222,7 +2220,7 @@ export function createActions(store, backend = null, authService = null, storage
         snapshot.settings || {},
       );
       if (!hasInput) return;
-      if (!aiState.canRun && aiState.note.includes("webhook n8n")) {
+      if (!aiState.canRun && aiState.note.includes("пока не настроен")) {
         update((state) => syncSelectedQuoteRecord({
           ...state,
           quote: {
@@ -2259,8 +2257,7 @@ export function createActions(store, backend = null, authService = null, storage
           ...state.quote,
           meta: {
             ...getQuoteMeta(state),
-            aiProcessingStatus: "queued",
-            aiProcessingNote: "Отправляем файл и контекст запроса в n8n.",
+            aiProcessingNote: "Отправляем файл и контекст на ИИ-обработку.",
             aiLastRunAt: new Date().toISOString(),
           },
         },
@@ -2298,8 +2295,7 @@ export function createActions(store, backend = null, authService = null, storage
           if (!response.ok) {
             throw new Error(
               (payload && typeof payload === "object" ? payload?.message : "") ||
-                (typeof payload === "string" ? payload.slice(0, 240) : "") ||
-                `n8n вернул ${response.status}`,
+                `Внешний обработчик вернул ${response.status}`,
             );
           }
           update((state) => syncSelectedQuoteRecord({
@@ -2308,15 +2304,14 @@ export function createActions(store, backend = null, authService = null, storage
               ...state.quote,
               meta: {
                 ...getQuoteMeta(state),
-                aiProcessingStatus: "ready",
-                aiProcessingNote: "Файл и контекст отправлены в n8n. Дальше ждём обработку со стороны workflow.",
+                aiProcessingNote: "Файл и контекст отправлены в обработку. Дальше ждём результат от workflow.",
                 aiLastRunAt: getQuoteMeta(state).aiLastRunAt || new Date().toISOString(),
               },
-            },
+            }
           }));
         })
         .catch((error) => {
-          const message = String(error?.message || "Не удалось отправить запрос в n8n.");
+          const message = String(error?.message || "Не удалось отправить запрос на ИИ-обработку.");
           update((state) => syncSelectedQuoteRecord({
             ...state,
             quote: {
@@ -2325,7 +2320,7 @@ export function createActions(store, backend = null, authService = null, storage
                 ...getQuoteMeta(state),
                 aiProcessingStatus: "error",
                 aiProcessingNote: /failed to fetch/i.test(message)
-                  ? "Не удалось достучаться до n8n. Скорее всего, webhook не отдаёт CORS для браузера или недоступен извне."
+                  ? "Не удалось достучаться до сервера обработки. Проверьте сетевое подключение."
                   : message,
                 aiLastRunAt: getQuoteMeta(state).aiLastRunAt || new Date().toISOString(),
               },
@@ -2413,6 +2408,39 @@ export function createActions(store, backend = null, authService = null, storage
               ? firstAlternative.rrc_min
               : item.sale_price,
         }));
+      });
+    },
+    triggerImportAiProcessing() {
+      const state = store.getState();
+      const currentImportId = state.ui.selectedImportId;
+      if (!currentImportId) return;
+
+      // Update local status optimistically or set a loading state
+      const importRecord = state.imports?.byId?.[currentImportId];
+      if (importRecord) {
+        update((s) => ({
+          ...s,
+          imports: {
+            ...s.imports,
+            byId: {
+              ...s.imports.byId,
+              [currentImportId]: { ...importRecord, status: "queued", ai_processing_requested: true }
+            }
+          }
+        }));
+      }
+
+      fetch(`/api/imports/${currentImportId}/dispatch`, {
+        method: "POST",
+        body: JSON.stringify({ retry: true })
+      })
+      .then(res => res.json())
+      .then(() => {
+        // Refresh imports to get updated status
+        store.actions.fetchImportsList();
+      })
+      .catch(err => {
+        console.error("Failed to trigger AI processing for import:", err);
       });
     },
   };

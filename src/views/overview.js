@@ -1011,6 +1011,7 @@ export function renderOverview(state) {
             <span class="pill">Проверено: ${stats.checked}</span>
             <span class="pill">Исключено: ${stats.excluded}</span>
             <span class="pill ${selectedCount ? "pill-accent" : ""}">Выбрано: ${selectedCount}</span>
+            ${currentImport ? `<span class="pill ${currentImport?.status === 'completed' || currentImport?.status === 'ready' ? 'pill-good' : currentImport?.status === 'error' ? 'pill-bad' : currentImport?.status === 'queued' || currentImport?.status === 'processing' ? 'pill-warn' : ''}">ИИ: ${currentImport?.status === 'completed' || currentImport?.status === 'ready' ? 'Обработано' : currentImport?.status === 'queued' ? 'В очереди' : currentImport?.status === 'error' ? 'Ошибка обработки' : currentImport?.status === 'processing' ? 'Обрабатывается...' : currentImport?.status || 'Ожидание'}</span>` : ''}
             <button class="ghost-btn compact-action-btn table-action-btn" data-action="openCurrentImportInFiles">К импорту</button>
           </div>
         </div>
@@ -1025,6 +1026,7 @@ export function renderOverview(state) {
               <button class="ghost-btn compact-action-btn table-action-btn" data-action="addSelectionToQuote" title="Добавить выделенные строки в состав КП">В КП</button>
               <button class="ghost-btn compact-action-btn table-action-btn" data-action="openIssuesModal" title="Открыть список ошибок и предупреждений по текущему файлу">Проблемы</button>
               <button class="ghost-btn compact-action-btn table-action-btn" data-action="resetFilters" title="Сбросить все фильтры">Сбросить</button>
+              <button class="ghost-btn compact-action-btn table-action-btn" data-action="triggerImportAiProcessing" title="Запустить внешнюю ИИ-обработку текущего импорта">${currentImport?.status === 'processing' ? "ИИ-обработка..." : "Обработка ИИ"}</button>
               <button class="primary-btn compact-action-btn table-action-btn" data-action="buildQuote" title="Сформировать рабочий сценарий коммерческого предложения по выделенным строкам">Сформировать КП</button>
             </div>
           </div>

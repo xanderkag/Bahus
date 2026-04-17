@@ -634,9 +634,9 @@ export function renderQuote(state) {
         </div>
         ${
           !hasRealWorkflowEndpoint
-            ? `<div class="hint quote-items-hint">Webhook n8n для КП пока не настроен. Укажите реальный http(s) endpoint, и обработка пойдёт наружу.</div>`
+            ? `<div class="hint quote-items-hint">Webhook для обработки ИИ пока не настроен. Укажите реальный http(s) endpoint для отправки файла на разбор.</div>`
             : localQuoteFile
-              ? `<div class="hint quote-items-hint">К этому КП привязан локальный файл запроса. После создания КП Bahus может сразу отправлять его в n8n.</div>`
+              ? `<div class="hint quote-items-hint">К этому КП привязан локальный файл запроса. Bahus может сразу отправить его на внешнюю ИИ-обработку.</div>`
               : ""
         }
         ${
