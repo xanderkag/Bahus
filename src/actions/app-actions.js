@@ -1695,11 +1695,12 @@ export function createActions(store, backend = null, authService = null, storage
     async createImportsFromUpload() {
       const currentState = store.getState();
       const draft = currentState.ui.uploadDraft;
-      const supplierId = draft.supplierId || "sup_nr";
+      const supplierId = draft.supplierId || Object.keys(currentState.entities.suppliersById)[0];
       const supplier = currentState.entities.suppliersById[supplierId];
       const files = draft.files || [];
 
       if (!files.length || !supplier) {
+        if (!supplier) alert("Поставщик не выбран или список поставщиков пуст.");
         update((state) => ({
           ...state,
           ui: { ...state.ui, modal: null },
@@ -1743,6 +1744,12 @@ export function createActions(store, backend = null, authService = null, storage
           });
 
           const results = await Promise.allSettled(uploadPromises);
+          
+          if (results.some((r) => r.status === "rejected")) {
+            console.error("Upload errors:", results.filter(r => r.status === "rejected"));
+            alert("Произошла ошибка при загрузке файлов. Подробности в консоли.");
+          }
+          
           const createdImports = results
             .filter((r) => r.status === "fulfilled" && r.value)
             .map((r) => r.value);

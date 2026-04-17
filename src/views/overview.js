@@ -969,9 +969,9 @@ export function renderOverview(state) {
               <p>Импортированные файлы, поиск и быстрый переход в КП.</p>
             </div>
             <div class="toolbar-actions overview-table-actions">
-              <button class="ghost-btn compact-action-btn" data-action="openExportModal" title="Экспорт списка">Экспорт</button>
-              <button class="ghost-btn icon-action-btn table-danger-btn" data-action="openConfirmDeleteImportModal" ${!state.ui.selectedImportId ? "disabled" : ""} title="Удалить выбранный прайс">🗑️</button>
               <button class="ghost-btn icon-action-btn table-add-btn" data-action="openUploadFilesModal" title="Загрузить прайс-лист">+</button>
+              <button class="ghost-btn icon-action-btn table-danger-btn" data-action="openConfirmDeleteImportModal" ${!state.ui.selectedImportId ? "disabled" : ""} title="Удалить выбранный прайс">🗑️</button>
+              <button class="ghost-btn compact-action-btn" data-action="openExportModal" title="Экспорт списка">Экспорт</button>
             </div>
           </div>
           <div class="table-wrap compact-table overview-imports-table" style="flex: 1;">
