@@ -54,7 +54,7 @@ UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Bakhus Assistant PostgreSQL API")
     parser.add_argument("--host", default=os.getenv("API_HOST", "0.0.0.0"))
-    parser.add_argument("--port", type=int, default=int(os.getenv("PORT", os.getenv("API_PORT", "8078"))))
+    parser.add_argument("--port", type=int, default=int(os.getenv("PORT") or os.getenv("API_PORT") or 8078))
     return parser.parse_args()
 
 
@@ -128,6 +128,9 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt: str, *args) -> None:
         logger.info(f"{self.address_string()} - {fmt % args}")
+
+    def address_string(self) -> str:
+        return self.client_address[0]
 
     def end_headers(self) -> None:
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -1499,9 +1502,17 @@ def cleanup_worker():
         time.sleep(3600)
 
 
+class DualStackServer(ThreadingHTTPServer):
+    def server_bind(self):
+        import socket
+        if ":" in self.server_address[0]:
+            self.address_family = socket.AF_INET6
+            self.allow_reuse_address = True
+        super().server_bind()
+
 def main() -> None:
     args = parse_args()
-    server = ThreadingHTTPServer((args.host, args.port), PostgresApiHandler)
+    server = DualStackServer((args.host, args.port), PostgresApiHandler)
     logger.info(f"Bakhus PostgreSQL API running at http://{args.host}:{args.port}")
     
     # Start the background cleanup thread
