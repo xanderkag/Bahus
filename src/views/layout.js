@@ -338,6 +338,38 @@ function renderExportModal(state) {
   `;
 }
 
+export function renderConfirmDeleteImportModal(state) {
+  if (state.ui.modal !== "confirm-delete-import") return "";
+  const importRecord = state.entities.importsById[state.ui.selectedImportId];
+  if (!importRecord) return "";
+  const fileName = importRecord.meta?.source_file || "Неизвестный файл";
+  const isSaving = state.runtime?.resources?.imports?.status === "saving";
+
+  return `
+    <div class="modal-overlay">
+      <div class="app-dialog compact-dialog">
+        <div class="dialog-header">
+          <div>
+            <h3 style="color: var(--status-bad);">Удалить импорт?</h3>
+            <p>Вы собираетесь удалить данные импорта.</p>
+          </div>
+          <button class="ghost-btn icon-btn" data-action="closeModal" aria-label="Закрыть">×</button>
+        </div>
+        <div class="dialog-body">
+          <p style="margin-bottom: 12px; line-height: 1.5;">Это действие <strong>необратимо</strong>. Файл <b>${escapeHtml(fileName)}</b>, все его позиции и найденные ошибки будут удалены из базы данных.</p>
+          <p style="color: var(--text-2); font-size: 13px;">Если позиции из этого импорта уже добавлены в рабочие коммерческие предложения, они также могут быть отвязаны.</p>
+        </div>
+        <div class="dialog-footer" style="justify-content: flex-end; gap: 12px;">
+          <button class="ghost-btn" data-action="closeModal" ${isSaving ? "disabled" : ""}>Отмена</button>
+          <button class="primary-btn" style="background: var(--status-bad); border-color: var(--status-bad);" data-action="deleteSelectedImport" ${isSaving ? "disabled" : ""}>
+            ${isSaving ? "Удаление..." : "Удалить навсегда"}
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 export function renderLayout(state) {
   const meta = pageMeta[state.ui.activeView];
   const isSidebarCollapsed = Boolean(state.ui.sidebarCollapsed);
