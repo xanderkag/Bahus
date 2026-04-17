@@ -262,7 +262,7 @@ function renderUploadFilesModal(state) {
         <div class="form-stack">
           <label class="field-label">Файлы поставщика</label>
           <label class="upload-dropzone">
-            <input class="upload-dropzone-input" type="file" multiple data-change="setUploadDraftFiles" />
+            <input class="upload-dropzone-input-hidden" type="file" multiple data-change="setUploadDraftFiles" />
             <strong>Перетащите прайс сюда или выберите файлы</strong>
             <span>Подходят Excel, PDF и другие входящие файлы поставщика.</span>
           </label>
@@ -288,7 +288,7 @@ function renderUploadFilesModal(state) {
         <div class="form-stack">
           <label class="field-label">Дополнительные вложения</label>
           <label class="upload-dropzone">
-            <input class="upload-dropzone-input" type="file" multiple data-change="setUploadDraftAttachments" />
+            <input class="upload-dropzone-input-hidden" type="file" multiple data-change="setUploadDraftAttachments" />
             <strong>Перетащите вложения сюда</strong>
             <span>Например: запрос клиента, сопроводительный PDF, таблицы или любые связанные файлы.</span>
           </label>

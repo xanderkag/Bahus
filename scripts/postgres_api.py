@@ -460,6 +460,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
 
         return {
             "id": import_id,
+            "created_at": batch_row["created_at"].isoformat() if "created_at" in batch_row and batch_row["created_at"] else batch_row["import_date"],
             "meta": {
                 "source_file": price_file["file_name"] if price_file else None,
                 "source_format": batch_row["source_format"] or (price_file["source_format"] if price_file else None),

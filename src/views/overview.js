@@ -41,6 +41,17 @@ function formatDocumentType(type) {
   return labels[type] || formatValue(type);
 }
 
+function formatDateTime(isoString) {
+  if (!isoString) return "";
+  const date = new Date(isoString);
+  if (isNaN(date.getTime())) return isoString;
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  const HH = String(date.getHours()).padStart(2, "0");
+  const min = String(date.getMinutes()).padStart(2, "0");
+  return `${date.getFullYear()}-${mm}-${dd} ${HH}:${min}`;
+}
+
 function renderMetaRows(currentImport, supplier, compact = true) {
   const primaryPairs = [
     ["Файл", currentImport.meta.source_file],
@@ -263,7 +274,7 @@ function renderImportsTable(state) {
               ${escapeHtml(item.meta.source_file)}
             </button>
           </td>
-          <td>${escapeHtml(item.meta.import_date)}</td>
+          <td>${escapeHtml(item.created_at ? formatDateTime(item.created_at) : item.meta.import_date)}</td>
           <td>${escapeHtml(item.meta.source_format.toUpperCase())}</td>
           <td>${escapeHtml(formatValue(supplier?.name))}</td>
           <td>${escapeHtml(formatDocumentType(item.meta.document_type))}</td>

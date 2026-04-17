@@ -1,5 +1,5 @@
 export const VERSION_INFO = {
-  version: "1.0.7",
-  commit: "redesign-boot-screen",
+  version: "1.0.8",
+  commit: "fix-file-upload-ui",
   date: new Date().toISOString()
 };
