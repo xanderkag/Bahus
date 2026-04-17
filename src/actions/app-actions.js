@@ -1742,7 +1742,10 @@ export function createActions(store, backend = null, authService = null, storage
             return createdImportId;
           });
 
-          await Promise.allSettled(uploadPromises);
+          const results = await Promise.allSettled(uploadPromises);
+          const createdImports = results
+            .filter((r) => r.status === "fulfilled" && r.value)
+            .map((r) => r.value);
 
           await loadImportsResource();
           await loadJobsResource();
@@ -1775,6 +1778,26 @@ export function createActions(store, backend = null, authService = null, storage
         } catch (error) {
           setResourceState("imports", { status: "error", error: error.message });
           return;
+        }
+      }
+    },
+    async deleteSelectedImport() {
+      const state = store.getState();
+      const importId = state.ui.selectedImportId;
+      if (!importId) return;
+
+      if (!confirm("Вы уверены, что хотите удалить выбранный файл импорта? Это действие необратимо и удалит все связанные позиции И ошибки.")) return;
+
+      if (backend && state.runtime?.dataSource === "local-api") {
+        try {
+          await backend.deleteImport(importId);
+          update((s) => ({
+            ...s,
+            ui: { ...s.ui, selectedImportId: null },
+          }));
+          await actions.loadImportsResource();
+        } catch (e) {
+          alert(`Не удалось удалить файл: \${e.message || "Ошибка сервера"}`);
         }
       }
 

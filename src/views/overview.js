@@ -280,9 +280,6 @@ function renderImportsTable(state) {
           <td>${escapeHtml(formatDocumentType(item.meta.document_type))}</td>
           <td><span class="status-pill">${escapeHtml(formatImportStatus(item.status))}</span></td>
           <td><span class="pill">${issueCount} проблем</span></td>
-          <td>
-            <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn table-add-btn" data-action="seedQuoteFromImport" data-import-id="${item.id}" title="Создать КП из файла" aria-label="Создать КП">+</button>
-          </td>
         </tr>
       `;
     })
@@ -984,9 +981,9 @@ export function renderOverview(state) {
             <p>Импортированные файлы, поиск и быстрый переход в КП.</p>
           </div>
           <div class="toolbar-actions overview-table-actions">
-            <button class="ghost-btn compact-action-btn" data-action="openExportModal">Экспорт</button>
-            <button class="ghost-btn compact-action-btn" data-action="openUploadFilesModal" style="border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 4px 12px;">Загрузить прайс-лист</button>
-            <button class="ghost-btn compact-action-btn" data-action="resetImportFilters" title="Сбросить фильтры файлов">Сбросить</button>
+            <button class="ghost-btn compact-action-btn" data-action="openExportModal" title="Экспорт списка">Экспорт</button>
+            <button class="ghost-btn icon-action-btn table-danger-btn" data-action="deleteSelectedImport" ${!state.ui.selectedImportId ? "disabled" : ""} title="Удалить выбранный прайс">🗑️</button>
+            <button class="ghost-btn icon-action-btn table-add-btn" data-action="openUploadFilesModal" title="Загрузить прайс-лист">+</button>
           </div>
         </div>
         <div class="table-wrap compact-table overview-imports-table">
@@ -1001,7 +998,6 @@ export function renderOverview(state) {
                 <th class="filterable-th">${renderImportColumnHeader("Тип", "type", state.ui.activeImportColumnFilter)}${renderImportColumnMenu(state, "type")}</th>
                 <th class="filterable-th">${renderImportColumnHeader("Статус", "status", state.ui.activeImportColumnFilter)}${renderImportColumnMenu(state, "status")}</th>
                 <th>Проблемы</th>
-                <th></th>
               </tr>
             </thead>
             <tbody>${renderImportsTable(state)}</tbody>

@@ -239,6 +239,41 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             return self.handle_create_quote()
 
         return self.respond_json({"error": "Not found", "path": route}, status=HTTPStatus.NOT_FOUND)
+
+    def do_DELETE(self) -> None:  # noqa: N802
+        try:
+            self._do_DELETE_internal()
+        except Exception:
+            logger.error(f"Error handling DELETE {self.path}:\n{traceback.format_exc()}")
+            self.respond_json(
+                {"error": "Internal Server Error", "detail": traceback.format_exc()},
+                status=HTTPStatus.INTERNAL_SERVER_ERROR
+            )
+
+    def _do_DELETE_internal(self) -> None:
+        parsed = urlparse(self.path)
+        route = parsed.path
+
+        if route.startswith("/api/imports/") and len(route.split("/")) == 4:
+            return self.handle_delete_import(route.split("/")[3])
+
+        return self.respond_json({"error": "Not found", "path": route}, status=HTTPStatus.NOT_FOUND)
+
+    def handle_delete_import(self, import_id: str) -> None:
+        with self.db() as conn:
+            import_doc = self.require_import(conn, import_id)
+            if not import_doc:
+                return self.respond_json({"error": "Import not found"}, status=HTTPStatus.NOT_FOUND)
+            
+            # Delete associated issues, rows, files, document (assuming no cascade, perform manually to be safe)
+            conn.execute("delete from import_row_issue where import_row_id in (select id from import_row where import_batch_id = %s)", (import_id,))
+            conn.execute("delete from import_row where import_batch_id = %s", (import_id,))
+            conn.execute("delete from import_file where import_batch_id = %s", (import_id,))
+            conn.execute("delete from import_batch where id = %s", (import_id,))
+            conn.commit()
+            
+        return self.respond_json({"status": "deleted", "id": import_id})
+
     def read_json_body(self) -> dict:
         content_length = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(content_length) if content_length else b"{}"

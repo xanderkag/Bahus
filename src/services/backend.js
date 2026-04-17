@@ -39,6 +39,11 @@ export function createBackend(apiBaseUrl) {
         body: payload instanceof FormData ? payload : JSON.stringify(payload),
       });
     },
+    deleteImport(importId) {
+      return fetchJson(`${apiBaseUrl}/imports/${encodeURIComponent(importId)}`, {
+        method: "DELETE",
+      });
+    },
     dispatchImport(importId, payload = {}) {
       return fetchJson(`${apiBaseUrl}/imports/${encodeURIComponent(importId)}/dispatch`, {
         method: "POST",
