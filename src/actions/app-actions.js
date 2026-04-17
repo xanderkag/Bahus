@@ -1780,36 +1780,6 @@ export function createActions(store, backend = null, authService = null, storage
           return;
         }
       }
-    },
-    openConfirmDeleteImportModal() {
-      update((state) => {
-        if (!state.ui.selectedImportId) return state;
-        return {
-          ...state,
-          ui: { ...state.ui, modal: "confirm-delete-import" },
-        };
-      });
-    },
-    async deleteSelectedImport() {
-      const state = store.getState();
-      const importId = state.ui.selectedImportId;
-      if (!importId) return;
-
-      if (backend && state.runtime?.dataSource === "local-api") {
-        try {
-          // Immediately close the confirmation modal while processing
-          update((s) => ({ ...s, ui: { ...s.ui, modal: null } }));
-          await backend.deleteImport(importId);
-          update((s) => ({
-            ...s,
-            ui: { ...s.ui, selectedImportId: null },
-          }));
-          await actions.loadImportsResource();
-        } catch (e) {
-          // Only use alert for catastrophic backend errors which shouldn't happen often
-          alert(`Не удалось удалить файл: \${e.message || "Ошибка сервера"}`);
-        }
-      }
 
       update((state) => {
         const importsById = { ...state.entities.importsById };
@@ -1866,6 +1836,45 @@ export function createActions(store, backend = null, authService = null, storage
           },
         };
       });
+    },
+    openConfirmDeleteImportModal() {
+      update((state) => {
+        if (!state.ui.selectedImportId) return state;
+        return {
+          ...state,
+          ui: { ...state.ui, modal: "confirm-delete-import" },
+        };
+      });
+    },
+    async deleteSelectedImport() {
+      const state = store.getState();
+      const importId = state.ui.selectedImportId;
+      if (!importId) return;
+
+      if (backend && state.runtime?.dataSource === "local-api") {
+        try {
+          // Immediately close the confirmation modal while processing
+          update((s) => ({ ...s, ui: { ...s.ui, modal: null } }));
+          await backend.deleteImport(importId);
+          update((s) => ({
+            ...s,
+            ui: { ...s.ui, selectedImportId: null },
+          }));
+          await loadImportsResource();
+        } catch (e) {
+          // Only use alert for catastrophic backend errors which shouldn't happen often
+          alert(`Не удалось удалить файл: \${e.message || "Ошибка сервера"}`);
+        }
+      } else {
+        // Fallback for mock mode
+        update((s) => {
+          const sRef = { ...s };
+          sRef.ui = { ...sRef.ui, selectedImportId: null, modal: null };
+          delete sRef.entities.importsById[importId];
+          sRef.entities.importOrder = sRef.entities.importOrder.filter((id) => id !== importId);
+          return sRef;
+        });
+      }
     },
     closeModal() {
       update((state) => ({
