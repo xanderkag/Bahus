@@ -1,5 +1,5 @@
 export const VERSION_INFO = {
-  version: "1.0.6",
-  commit: "async-webhook-dispatch",
+  version: "1.0.7",
+  commit: "redesign-boot-screen",
   date: new Date().toISOString()
 };

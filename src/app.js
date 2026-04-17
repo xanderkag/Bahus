@@ -44,13 +44,20 @@ function attachQuoteColumnResize(rootElement, store, actions) {
   });
 }
 
-function renderBootMessage(title, message) {
+function renderBootMessage(title, message, isLoading = false) {
   root.innerHTML = `
     <div style="min-height:100vh;display:grid;place-items:center;padding:24px;">
-      <div style="max-width:680px;width:100%;padding:24px;border:1px solid var(--line);border-radius:var(--radius-xl);background:var(--panel-strong);box-shadow:var(--shadow);color:var(--text);">
-        <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:10px;">Bahus Assistant bootstrap</div>
-        <h1 style="margin:0 0 10px;font-size:var(--text-xxl);">${title}</h1>
-        <p style="margin:0;color:var(--muted);line-height:1.5;">${message}</p>
+      <div style="max-width:480px;width:100%;text-align:center;display:flex;flex-direction:column;align-items:center;gap:32px;">
+        <h1 style="margin:0;font-size:32px;background:linear-gradient(135deg, var(--text) 0%, var(--muted) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:-0.02em;font-weight:600;">
+          Bakhus Assistant
+        </h1>
+        <div style="padding:32px;border:1px solid var(--line);border-radius:var(--radius-xl);background:var(--panel-strong);box-shadow:var(--shadow);width:100%;">
+          <div style="font-size:var(--text-lg);font-weight:600;color:var(--text);margin-bottom:12px;display:flex;align-items:center;justify-content:center;gap:12px;">
+            ${isLoading ? '<div class="boot-loader"></div>' : ''}
+            ${title}
+          </div>
+          <div style="color:var(--muted);font-size:var(--text-sm);line-height:1.5;">${message}</div>
+        </div>
       </div>
     </div>
   `;
@@ -77,7 +84,7 @@ async function bootstrapState() {
 }
 
 async function main() {
-  renderBootMessage("Загрузка workspace", "Подключаемся к Bahus API...");
+  renderBootMessage("Инициализация", "Подключение к серверам, загрузка зависимостей...", true);
   const config = getBootstrapConfig();
   const initialState = await bootstrapState();
   initialState.ui = {
