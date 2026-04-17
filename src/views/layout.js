@@ -473,33 +473,9 @@ export function renderLayout(state) {
                   `
                 : ""
             }
+          <div class="topbar-actions">
+            <span class="pill">${escapeHtml(state.auth?.currentUser?.email || "")}</span>
           </div>
-          ${
-            state.ui.activeView === "overview"
-              ? `
-                  <div class="topbar-actions topbar-workzone topbar-workzone-actions">
-                    <span class="pill">${escapeHtml(state.auth?.currentUser?.email || "")}</span>
-                    <button class="ghost-btn" data-action="openUploadFilesModal">Новый импорт</button>
-                    <button
-                      class="ghost-btn"
-                      data-action="seedQuoteFromReview"
-                      title="Заполняет сценарий формирования КП по выбранному файлу и переводит вас в рабочий поток предложения"
-                    >
-                      В КП
-                    </button>
-                    <button class="primary-btn" data-action="openNewQuoteModal">Новое КП</button>
-                    <button class="ghost-btn" data-action="openExportModal">Экспорт</button>
-                    <button class="ghost-btn" data-action="signOutMaster">Выйти</button>
-                  </div>
-                `
-              : `
-                  <div class="topbar-actions">
-                    <span class="pill">${escapeHtml(state.auth?.currentUser?.email || "")}</span>
-                    <button class="ghost-btn" data-action="signOutMaster">Выйти</button>
-                    <button class="ghost-btn" data-action="openExportModal">Экспорт</button>
-                  </div>
-                `
-          }
         </header>
 
         ${renderActiveView(state)}

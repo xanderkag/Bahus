@@ -973,6 +973,8 @@ export function renderOverview(state) {
             <p>Импортированные файлы, поиск и быстрый переход в КП.</p>
           </div>
           <div class="toolbar-actions overview-table-actions">
+            <button class="ghost-btn compact-action-btn" data-action="openExportModal">Экспорт</button>
+            <button class="ghost-btn compact-action-btn" data-action="openUploadFilesModal" style="border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 4px 12px;">Загрузить прайс-лист</button>
             <button class="ghost-btn compact-action-btn" data-action="resetImportFilters" title="Сбросить фильтры файлов">Сбросить</button>
           </div>
         </div>

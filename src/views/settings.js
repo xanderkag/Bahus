@@ -63,6 +63,17 @@ export function renderSettings(state) {
           <div class="hint">Тема применяется ко всем экранам: импорт, позиции, КП и настройки.</div>
         </div>
       </article>
+      <article class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>Сессия</h2>
+            <p>Управление вашим доступом к системе.</p>
+          </div>
+        </div>
+        <div style="padding: 0 24px 24px;">
+          <button class="ghost-btn" data-action="signOutMaster" style="color: var(--color-danger);">Выйти из системы</button>
+        </div>
+      </article>
     </section>
   `;
 }
