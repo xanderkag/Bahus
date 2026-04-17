@@ -45,11 +45,20 @@ function formatDateTime(isoString) {
   if (!isoString) return "";
   const date = new Date(isoString);
   if (isNaN(date.getTime())) return isoString;
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-  const HH = String(date.getHours()).padStart(2, "0");
-  const min = String(date.getMinutes()).padStart(2, "0");
-  return `${date.getFullYear()}-${mm}-${dd} ${HH}:${min}`;
+  
+  // Format as YYYY-MM-DD HH:mm in MSK timezone
+  const parts = new Intl.DateTimeFormat("ru-RU", {
+    timeZone: "Europe/Moscow",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(date);
+  
+  const p = {};
+  parts.forEach(({ type, value }) => { p[type] = value; });
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
 }
 
 function renderMetaRows(currentImport, supplier, compact = true) {
@@ -908,7 +917,15 @@ function renderJobsPanel(state) {
                   <tr>
                     <td><span class="pill" style="font-size: 11px;">${escapeHtml(formatValue(job.type))}</span></td>
                     <td><span class="status-pill ${job.status === "done" ? "status-good" : job.status === "error" ? "status-bad" : "status-warn"}">${job.status === "done" ? "Завершено" : escapeHtml(formatValue(job.status))}</span></td>
-                    <td style="color: var(--text-2); font-size: 12px;">${escapeHtml(job.updated_at.split(".")[0])}</td>
+                    <td style="color: var(--text-2); font-size: 12px;">${escapeHtml(
+                      (function() {
+                        try {
+                          return new Date(job.updated_at).toLocaleString("ru-RU", { timeZone: "Europe/Moscow", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+                        } catch(e) {
+                          return job.updated_at.split(".")[0];
+                        }
+                      })()
+                    )}</td>
                   </tr>
                 `,
               )
