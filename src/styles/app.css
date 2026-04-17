@@ -1834,11 +1834,17 @@ tbody tr:hover {
 }
 
 tbody tr.is-active {
-  background: rgba(90, 138, 196, 0.12);
+  background: rgba(113, 184, 255, 0.16);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+:root[data-theme="light"] tbody tr.is-active {
+  background: rgba(113, 184, 255, 0.16);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 tbody tr.is-selected {
-  background: rgba(88, 139, 212, 0.14);
+  background: rgba(113, 184, 255, 0.12);
 }
 
 .subtable-row td {

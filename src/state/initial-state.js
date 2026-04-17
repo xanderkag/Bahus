@@ -182,7 +182,7 @@ export function createInitialState(payload = {}, options = {}) {
         uploadError: null,
       },
       uploadDraft: {
-        supplierId: "sup_nr",
+        supplierId: null,
         documentType: "price_list",
         requestId: "",
         files: [],

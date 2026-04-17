@@ -2,7 +2,7 @@ import { renderItems } from "./items.js";
 import { renderOverview } from "./overview.js";
 import { renderQuote } from "./quote.js";
 import { renderSettings } from "./settings.js";
-import { escapeHtml, formatValue } from "../utils/format.js";
+import { escapeHtml, formatDateTime, formatImportStatus, formatValue, getImportStatusClass } from "../utils/format.js";
 import { VERSION_INFO } from "../version.js";
 
 const navigation = [
@@ -31,50 +31,7 @@ const pageMeta = {
   },
 };
 
-function renderAuthGate(state) {
-  const auth = state.auth || {};
-  const draft = state.ui.loginDraft || {};
-  const isLoading = auth.status === "authenticating" || auth.status === "loading";
-  return `
-    <div class="auth-shell">
-      <div class="auth-card">
-        <h1 class="auth-title">Bahus</h1>
-        
-        <div class="auth-form">
-          <div class="form-stack">
-            <input 
-              type="text" 
-              class="input auth-input" 
-              placeholder="Username" 
-              value="${escapeHtml(draft.username || "")}" 
-              data-input="setLoginDraftField" 
-              data-field="username"
-              ${isLoading ? "disabled" : ""}
-            />
-          </div>
-          <div class="form-stack">
-            <input 
-              type="password" 
-              class="input auth-input" 
-              placeholder="Password" 
-              value="${escapeHtml(draft.password || "")}" 
-              data-input="setLoginDraftField" 
-              data-field="password"
-              ${isLoading ? "disabled" : ""}
-            />
-          </div>
-        </div>
 
-        <div class="auth-actions">
-          <button class="primary-btn auth-submit-btn full-width" data-action="signInMaster" ${isLoading ? "disabled" : ""}>
-            ${isLoading ? "Вход..." : "Войти"}
-          </button>
-          ${auth.error ? `<div class="hint hint-error auth-status">${escapeHtml(auth.error)}</div>` : ''}
-        </div>
-      </div>
-    </div>
-  `;
-}
 
 function renderActiveView(state) {
   if (state.ui.activeView === "quote") return renderQuote(state);
@@ -382,10 +339,6 @@ function renderExportModal(state) {
 }
 
 export function renderLayout(state) {
-  if (state.settings?.auth_enabled && !state.auth?.currentUser) {
-    return renderAuthGate(state);
-  }
-
   const meta = pageMeta[state.ui.activeView];
   const isSidebarCollapsed = Boolean(state.ui.sidebarCollapsed);
   const runtime = state.runtime || {
@@ -454,8 +407,6 @@ export function renderLayout(state) {
                   `
                 : ""
             }
-          <div class="topbar-actions">
-            <span class="pill">${escapeHtml(state.auth?.currentUser?.email || "")}</span>
           </div>
         </header>
 
@@ -475,6 +426,7 @@ export function renderLayout(state) {
       ${renderNewQuoteModal(state)}
       ${renderUploadFilesModal(state)}
       ${renderExportModal(state)}
+      ${renderConfirmDeleteImportModal(state)}
     </div>
   `;
 }

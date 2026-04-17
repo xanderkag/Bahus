@@ -43,3 +43,67 @@ export function pluralize(count, one, few, many) {
   if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
   return many;
 }
+
+// ─── Import / Job domain helpers ──────────────────────────────────────────────
+
+const IMPORT_STATUS_LABELS = {
+  success: "Готово",
+  parsed: "Разобрано",
+  partial: "Требует проверки",
+  error: "Ошибка импорта",
+  pending: "В обработке",
+  queued: "В очереди",
+  uploaded: "Загружено",
+  failed: "Ошибка обработки",
+};
+
+/** Localised human-readable label for import / job status values. */
+export function formatImportStatus(status) {
+  return IMPORT_STATUS_LABELS[status] || formatValue(status);
+}
+
+/** Returns the CSS class to apply to a status-pill element. */
+export function getImportStatusClass(status) {
+  switch (status) {
+    case "success":
+    case "parsed":   return "status-good";
+    case "partial":
+    case "pending":  return "status-warn";
+    case "error":
+    case "failed":   return "status-bad";
+    case "queued":   return "status-default";
+    default:         return "";
+  }
+}
+
+const DOCUMENT_TYPE_LABELS = {
+  net_price:  "Нетто-прайс",
+  promo:      "Промо",
+  price_list: "Прайс-лист",
+  request_offer: "Под запрос",
+};
+
+/** Localised label for import document_type values. */
+export function formatDocumentType(type) {
+  return DOCUMENT_TYPE_LABELS[type] || formatValue(type);
+}
+
+/**
+ * Formats an ISO timestamp for display in Europe/Moscow timezone.
+ * Returns "YYYY-MM-DD HH:mm" or falls back to raw string on parse error.
+ */
+export function formatDateTime(isoString) {
+  if (!isoString) return "";
+  const date = new Date(isoString);
+  if (isNaN(date.getTime())) return isoString;
+
+  const parts = new Intl.DateTimeFormat("ru-RU", {
+    timeZone: "Europe/Moscow",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit",
+  }).formatToParts(date);
+
+  const p = {};
+  parts.forEach(({ type, value }) => { p[type] = value; });
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
+}

@@ -3,8 +3,6 @@ import { createActions } from "./actions/app-actions.js";
 import { loadStateFromApi } from "./services/api.js";
 import { createBackend } from "./services/backend.js";
 import { getBootstrapConfig, getStoredSidebarCollapsed, getStoredTheme, persistDataSource } from "./services/config.js";
-import { createFirebaseAuthService } from "./services/firebase-auth.js";
-import { createFirebaseStorageService } from "./services/firebase-storage.js";
 import { createStore } from "./state/store.js";
 import { createAppEventHandlers } from "./utils/dom.js";
 import { renderLayout } from "./views/layout.js";
@@ -96,10 +94,8 @@ async function main() {
     theme: getStoredTheme(),
   };
   const store = createStore(initialState);
-  const authService = initialState.settings?.auth_enabled ? createFirebaseAuthService() : null;
-  const storageService = initialState.settings?.live_upload_enabled ? createFirebaseStorageService() : null;
   const backend = createBackend(initialState.runtime.apiBaseUrl || config.apiBaseUrl);
-  const actions = createActions(store, backend, authService, storageService);
+  const actions = createActions(store, backend);
   store.actions = actions;
   const handlers = createAppEventHandlers(actions);
   let importStatusPollId = null;
@@ -115,10 +111,12 @@ async function main() {
   function shouldPollImportStatus(state) {
     if (state.runtime?.dataSource !== "local-api") return false;
     if (state.ui.activeView !== "overview") return false;
-    if (state.ui.modal) return false; // Pause polling when any modal is open
+    // Pause polling only while an active file upload is in progress
+    if (state.runtime?.resources?.imports?.status === "saving") return false;
     const importId = state.ui.selectedImportId;
     if (!importId) return false;
     const status = state.entities.importsById[importId]?.status;
+    // "uploaded" = file created, not yet dispatched — no need to poll
     return ["uploaded", "queued", "pending"].includes(status);
   }
 
@@ -195,12 +193,7 @@ async function main() {
     syncImportStatusPolling(state);
   });
   render();
-  if (authService) {
-    actions.setAuthStatus({ status: "loading" });
-    await authService.initialize((user) => {
-      actions.handleAuthStateChange({ user });
-    });
-  }
+
   if (initialState.runtime?.dataSource === "local-api") {
     void actions.refreshRemoteData();
   }

@@ -12,67 +12,15 @@ import {
 } from "../state/selectors.js";
 import {
   escapeHtml,
+  formatDateTime,
+  formatDocumentType,
+  formatImportStatus,
   formatMoney,
   formatNumber,
   formatPercent,
   formatValue,
+  getImportStatusClass,
 } from "../utils/format.js";
-
-function formatImportStatus(status) {
-  const labels = {
-    success: "Готово",
-    parsed: "Разобрано",
-    partial: "Требует проверки",
-    error: "Ошибка импорта",
-    pending: "В обработке",
-    queued: "В очереди",
-    uploaded: "Загружено",
-    failed: "Ошибка обработки",
-  };
-  return labels[status] || formatValue(status);
-}
-
-function getImportStatusClass(status) {
-  switch (status) {
-    case "success": return "status-good";
-    case "parsed": return "status-good";
-    case "partial": return "status-warn";
-    case "error": return "status-bad";
-    case "failed": return "status-bad";
-    case "pending": return "status-warn";
-    case "queued": return "status-default";
-    default: return "";
-  }
-}
-
-function formatDocumentType(type) {
-  const labels = {
-    net_price: "Нетто-прайс",
-    promo: "Промо",
-    price_list: "Прайс-лист",
-  };
-  return labels[type] || formatValue(type);
-}
-
-function formatDateTime(isoString) {
-  if (!isoString) return "";
-  const date = new Date(isoString);
-  if (isNaN(date.getTime())) return isoString;
-  
-  // Format as YYYY-MM-DD HH:mm in MSK timezone
-  const parts = new Intl.DateTimeFormat("ru-RU", {
-    timeZone: "Europe/Moscow",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).formatToParts(date);
-  
-  const p = {};
-  parts.forEach(({ type, value }) => { p[type] = value; });
-  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
-}
 
 function renderMetaRows(currentImport, supplier, compact = true) {
   const primaryPairs = [
@@ -297,7 +245,7 @@ function renderImportsTable(state) {
             </button>
           </td>
           <td>${escapeHtml(item.created_at ? formatDateTime(item.created_at) : item.meta.import_date)}</td>
-          <td>${escapeHtml(item.meta.source_format.toUpperCase())}</td>
+          <td>${escapeHtml((item.meta.source_format || "").toUpperCase() || "—")}</td>
           <td>${escapeHtml(formatValue(supplier?.name))}</td>
           <td>${escapeHtml(formatDocumentType(item.meta.document_type))}</td>
           <td><span class="status-pill ${getImportStatusClass(item.status)}">${escapeHtml(formatImportStatus(item.status))}</span></td>
@@ -901,7 +849,6 @@ function renderRowDetailPanel(state) {
 
 function renderJobsPanel(state) {
   const jobs = getRuntimeJobs(state);
-  const resource = state.runtime?.resources?.jobs;
   if (state.runtime?.dataSource !== "local-api") return "";
 
   return `
@@ -923,26 +870,21 @@ function renderJobsPanel(state) {
             </tr>
           </thead>
           <tbody>
-            ${jobs
-              .slice(0, 5) // Show only latest 5 to save space
-              .map(
-                (job) => `
-                  <tr>
-                    <td><span class="pill" style="font-size: 11px;">${escapeHtml(formatValue(job.type))}</span></td>
-                    <td><span class="status-pill ${job.status === "done" ? "status-good" : job.status === "error" ? "status-bad" : "status-warn"}">${job.status === "done" ? "Завершено" : escapeHtml(formatValue(job.status))}</span></td>
-                    <td style="color: var(--text-2); font-size: 12px;">${escapeHtml(
-                      (function() {
-                        try {
-                          return new Date(job.updated_at).toLocaleString("ru-RU", { timeZone: "Europe/Moscow", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
-                        } catch(e) {
-                          return job.updated_at.split(".")[0];
-                        }
-                      })()
-                    )}</td>
-                  </tr>
-                `,
-              )
-              .join("")}
+            ${jobs.length === 0
+              ? `<tr><td colspan="3" style="color: var(--text-2); text-align: center;">Операций пока нет</td></tr>`
+              : jobs
+                  .slice(0, 5)
+                  .map(
+                    (job) => `
+                      <tr>
+                        <td><span class="pill" style="font-size: 11px;">${escapeHtml(formatValue(job.type))}</span></td>
+                        <td><span class="status-pill ${getImportStatusClass(job.status)}">${escapeHtml(formatImportStatus(job.status))}</span></td>
+                        <td style="color: var(--text-2); font-size: 12px;">${escapeHtml(formatDateTime(job.updated_at))}</td>
+                      </tr>
+                    `,
+                  )
+                  .join("")
+            }
           </tbody>
         </table>
       </div>
@@ -1038,8 +980,10 @@ export function renderOverview(state) {
             <span class="pill">Проверено: ${stats.checked}</span>
             <span class="pill">Исключено: ${stats.excluded}</span>
             <span class="pill ${selectedCount ? "pill-accent" : ""}">Выбрано: ${selectedCount}</span>
-            ${currentImport ? `<span class="pill ${currentImport?.status === 'completed' || currentImport?.status === 'ready' ? 'pill-good' : currentImport?.status === 'error' ? 'pill-bad' : currentImport?.status === 'queued' || currentImport?.status === 'processing' ? 'pill-warn' : ''}">ИИ: ${currentImport?.status === 'completed' || currentImport?.status === 'ready' ? 'Обработано' : currentImport?.status === 'queued' ? 'В очереди' : currentImport?.status === 'error' ? 'Ошибка обработки' : currentImport?.status === 'processing' ? 'Обрабатывается...' : currentImport?.status || 'Ожидание'}</span>` : ''}
-            <button class="ghost-btn compact-action-btn table-action-btn" data-action="openCurrentImportInFiles">К импорту</button>
+            ${currentImport
+              ? `<span class="status-pill ${getImportStatusClass(currentImport.status)}">ИИ: ${escapeHtml(formatImportStatus(currentImport.status))}</span>`
+              : ""}
+            <button class="ghost-btn compact-action-btn table-action-btn" data-action="scrollToImportsList" title="Прокрутить вверх к списку файлов">Таблица файлов</button>
           </div>
         </div>
         <div class="table-wrap overview-table-wrap">
@@ -1053,7 +997,8 @@ export function renderOverview(state) {
               <button class="ghost-btn compact-action-btn table-action-btn" data-action="addSelectionToQuote" title="Добавить выделенные строки в состав КП">В КП</button>
               <button class="ghost-btn compact-action-btn table-action-btn" data-action="openIssuesModal" title="Открыть список ошибок и предупреждений по текущему файлу">Проблемы</button>
               <button class="ghost-btn compact-action-btn table-action-btn" data-action="resetFilters" title="Сбросить все фильтры">Сбросить</button>
-              <button class="ghost-btn compact-action-btn table-action-btn" data-action="triggerImportAiProcessing" title="Запустить внешнюю ИИ-обработку текущего импорта">${currentImport?.status === 'processing' ? "ИИ-обработка..." : "Обработка ИИ"}</button>
+              <button class="ghost-btn compact-action-btn table-action-btn" data-action="promptDeleteImport" ${!state.ui.selectedImportId ? "disabled" : ""} title="Удалить выбранный импорт навсегда" style="color: var(--status-bad);">Удалить</button>
+              <button class="ghost-btn compact-action-btn table-action-btn" data-action="dispatchSelectedImport" ${!state.ui.selectedImportId ? "disabled" : ""} title="Запустить внешнюю ИИ-обработку текущего импорта">${currentImport?.status === 'pending' ? "ИИ-обработка..." : "Обработка ИИ"}</button>
               <button class="primary-btn compact-action-btn table-action-btn" data-action="buildQuote" title="Сформировать рабочий сценарий коммерческого предложения по выделенным строкам">Сформировать КП</button>
             </div>
           </div>

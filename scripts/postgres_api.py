@@ -163,6 +163,8 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
 
         if route in {"/health", "/api/health"}:
             return self.respond_json({"status": "ok", "service": "bahus-postgres-api"})
+        if route == "/api/system/logs":
+            return self.handle_get_system_logs()
         if route == "/api/bootstrap":
             return self.handle_bootstrap()
         if route == "/api/imports":
@@ -1539,6 +1541,23 @@ def cleanup_worker():
         # Check every hour
         time.sleep(3600)
 
+
+    def handle_get_system_logs(self) -> None:
+        try:
+            log_file = log_dir / "api.log"
+            if not log_file.exists():
+                return self.respond_json({"error": "Log file not found", "lines": []})
+            
+            with open(log_file, "r", encoding="utf-8") as f:
+                content = f.readlines()
+                
+            # Return last 500 lines
+            return self.respond_json({
+                "file": str(log_file),
+                "lines": [line.strip() for line in content[-500:]]
+            })
+        except Exception as e:
+            return self.respond_json({"error": str(e), "lines": []}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
 def main() -> None:
     args = parse_args()

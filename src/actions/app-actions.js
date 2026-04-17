@@ -92,7 +92,7 @@ function mapApiImportToEntity(item) {
   };
 }
 
-export function createActions(store, backend = null, authService = null, storageService = null) {
+export function createActions(store, backend = null) {
   function update(updater) {
     store.setState(updater);
   }
@@ -112,6 +112,10 @@ export function createActions(store, backend = null, authService = null, storage
       },
     }));
   }
+
+  // =========================================================================
+  // === API RESOURCES & HYDRATION
+  // =========================================================================
 
   async function loadImportsResource() {
     if (!backend) return;
@@ -339,6 +343,10 @@ export function createActions(store, backend = null, authService = null, storage
     }
   }
 
+    // =========================================================================
+    // === MODELS / QUOTE BUILDER
+    // =========================================================================
+
   function withQuoteItem(state, itemId, updater) {
     const current = state.quote.itemsById[itemId];
     if (!current) return state;
@@ -527,6 +535,10 @@ export function createActions(store, backend = null, authService = null, storage
     };
   }
 
+    // =========================================================================
+    // === AI PROCESSING & EXTERNAL INTEGRATIONS
+    // =========================================================================
+
   function dispatchQuoteAiProcessing(quoteIdOverride = null) {
     const snapshot = store.getState();
     const targetQuoteId = quoteIdOverride || snapshot.ui.selectedQuoteId;
@@ -666,6 +678,10 @@ export function createActions(store, backend = null, authService = null, storage
       }
       if (view === "quote" && !store.getState().quote.itemOrder.length) await loadQuoteDraftResource();
     },
+    // =========================================================================
+    // === VIEW & NAVIGATION
+    // =========================================================================
+
     goToReview() {
       update((state) => ({ ...state, ui: { ...state.ui, activeView: "overview" } }));
     },
@@ -750,6 +766,10 @@ export function createActions(store, backend = null, authService = null, storage
         },
       }));
     },
+    // =========================================================================
+    // === AUTHENTICATION & SETTINGS
+    // =========================================================================
+
     handleAuthStateChange({ user }) {
       const state = store.getState();
       const allowedUser = user
@@ -943,6 +963,10 @@ export function createActions(store, backend = null, authService = null, storage
         ]);
       }
     },
+    // =========================================================================
+    // === FILTERS, SORTS & OVERVIEW SENSITIVE ACTIONS
+    // =========================================================================
+
     setFilter: debounce(({ field }, value) => {
       update((state) => ({
         ...state,
@@ -1341,8 +1365,44 @@ export function createActions(store, backend = null, authService = null, storage
     async setNewQuoteRequestFiles(_dataset, _value, event) {
       const [selectedFile] = Array.from(event?.target?.files || []);
       if (!selectedFile) return;
-      const currentState = store.getState();
-      const useStorageForQuoteRequest = Boolean(currentState.settings?.quote_request_storage_enabled);
+
+      // Firebase Storage upload is not currently enabled (live_upload_enabled not set).
+      // Files are stored locally in the new-quote draft and referenced by name/size only.
+      // The actual file content is passed to the AI workflow via the server-side handler.
+      const file = {
+        id: makeId("rqf"),
+        name: selectedFile.name,
+        size: selectedFile.size,
+        type: selectedFile.type || "unknown",
+        status: "local",
+      };
+
+      update((state) => ({
+        ...state,
+        ui: {
+          ...state.ui,
+          newQuoteDraft: {
+            ...state.ui.newQuoteDraft,
+            requestFiles: [file],
+            uploadStatus: "ready",
+            uploadProgress: 100,
+            uploadStage: "Файл добавлен в черновик",
+            uploadLog: [
+              {
+                id: makeId("upl"),
+                level: "success",
+                message: `Файл «${selectedFile.name}» выбран и готов к отправке.`,
+              },
+            ],
+            uploadError: null,
+          },
+        },
+        runtime: {
+          ...state.runtime,
+          quoteRequestDraftFile: selectedFile,
+        },
+      }));
+    },
 
       update((state) => ({
         ...state,
@@ -1633,21 +1693,33 @@ export function createActions(store, backend = null, authService = null, storage
       }
     },
     openUploadFilesModal() {
-      update((state) => ({
-        ...state,
-        ui: {
-          ...state.ui,
-          modal: "upload-files",
-          uploadDraft: {
-            supplierId: state.ui.uploadDraft?.supplierId || state.entities.importsById[state.ui.selectedImportId]?.supplier_id || "sup_nr",
-            documentType: "price_list",
-            requestId: state.quote.meta.quoteNumber || "",
-            files: [],
-            attachments: [],
-            managerNote: state.ui.uploadDraft?.managerNote || "",
+      update((state) => {
+        // Pick the currently-selected import's supplier, or the first available real supplier
+        const existingImportSupplierId = state.entities.importsById[state.ui.selectedImportId]?.supplier_id;
+        const firstSupplierId = Object.keys(state.entities.suppliersById)[0] || null;
+        const supplierId = state.ui.uploadDraft?.supplierId || existingImportSupplierId || firstSupplierId;
+
+        return {
+          ...state,
+          ui: {
+            ...state.ui,
+            modal: "upload-files",
+            uploadDraft: {
+              supplierId,
+              documentType: "price_list",
+              requestId: state.quote.meta.quoteNumber || "",
+              files: [],
+              attachments: [],
+              managerNote: "",
+            },
           },
-        },
-      }));
+        };
+      });
+    },
+    /** Scroll the overview page to the imports table at the top */
+    scrollToImportsList() {
+      const el = document.querySelector(".overview-files-panel");
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
     },
     setUploadDraftField({ field }, value) {
       if (field === "requestId" || field === "managerNote") {
@@ -1880,11 +1952,61 @@ export function createActions(store, backend = null, authService = null, storage
           loadImportsResource(),
           loadImportStatusResource(importId)
         ]);
-        alert("Запрос на обработку отправлен в n8n!");
+        const importRecord = state.entities.importsById[importId];
+        const fileName = importRecord?.meta?.source_file || "выбранный файл";
+        const supplierName = state.entities.suppliersById[importRecord?.supplier_id]?.name || "Неизвестный поставщик";
+        const note = importRecord?.meta?.manager_note ? ` (Примечание: ${importRecord.meta.manager_note})` : "";
+        alert(`Запрос отправлен в n8n:\nПоставщик: ${supplierName}\nФайл: ${fileName}${note}`);
       } catch (err) {
         console.error("Failed to dispatch import to N8N", err);
         setResourceState("imports", { status: "error", error: err.message });
         alert(`Ошибка отправки: ${err.message}`);
+      }
+    },
+
+    promptDeleteImport() {
+      update((state) => ({
+        ...state,
+        ui: {
+          ...state.ui,
+          modal: "confirm-delete-import",
+        },
+      }));
+    },
+
+    async deleteSelectedImport() {
+      const state = store.getState();
+      const importId = state.ui.selectedImportId;
+      if (!importId) return;
+
+      setResourceState("imports", { status: "saving", error: null });
+      try {
+        await backend.deleteImport(importId);
+        
+        await loadImportsResource();
+        const newState = store.getState();
+        const remainingImports = Object.keys(newState.entities.importsById);
+        const nextImportId = remainingImports.length > 0 ? remainingImports[0] : null;
+
+        update((currentState) => ({
+          ...currentState,
+          ui: {
+            ...currentState.ui,
+            modal: null,
+            selectedImportId: nextImportId,
+            selectedRowIds: [],
+          },
+        }));
+
+        if (nextImportId) {
+          await loadProductsResource(nextImportId);
+        } else {
+          setResourceState("products", { status: "idle", error: null });
+        }
+      } catch (err) {
+        console.error("Failed to delete import", err);
+        setResourceState("imports", { status: "error", error: err.message });
+        alert(`Ошибка удаления: ${err.message}`);
       }
     },
 
@@ -2001,14 +2123,22 @@ export function createActions(store, backend = null, authService = null, storage
     async refreshRemoteData() {
       const currentState = store.getState();
       if (currentState.runtime?.dataSource !== "local-api") return;
-      await Promise.all([
+      const promises = [
         loadImportsResource(),
         loadProductsResource(currentState.ui.selectedImportId),
-        loadCatalogResource(),
-        loadQuoteDraftResource(),
-        loadQuotesResource(),
         loadJobsResource(),
-      ]);
+      ];
+      
+      if (currentState.ui.activeView === "items") {
+        promises.push(loadCatalogResource());
+      }
+      
+      if (currentState.ui.activeView === "quote") {
+        promises.push(loadQuoteDraftResource());
+        promises.push(loadQuotesResource());
+      }
+      
+      await Promise.all(promises);
       await loadImportStatusResource(store.getState().ui.selectedImportId);
     },
     async refreshSelectedImportStatus() {
