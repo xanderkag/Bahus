@@ -1,5 +1,5 @@
 export const VERSION_INFO = {
-  version: "1.1.3",
-  commit: "overview-toolbar-rework",
+  version: "1.1.4",
+  commit: "fix-pwa-confirm-dialog",
   date: new Date().toISOString()
 };

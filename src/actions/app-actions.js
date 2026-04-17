@@ -1781,15 +1781,24 @@ export function createActions(store, backend = null, authService = null, storage
         }
       }
     },
+    openConfirmDeleteImportModal() {
+      update((state) => {
+        if (!state.ui.selectedImportId) return state;
+        return {
+          ...state,
+          ui: { ...state.ui, modal: "confirm-delete-import" },
+        };
+      });
+    },
     async deleteSelectedImport() {
       const state = store.getState();
       const importId = state.ui.selectedImportId;
       if (!importId) return;
 
-      if (!confirm("Вы уверены, что хотите удалить выбранный файл импорта? Это действие необратимо и удалит все связанные позиции И ошибки.")) return;
-
       if (backend && state.runtime?.dataSource === "local-api") {
         try {
+          // Immediately close the confirmation modal while processing
+          update((s) => ({ ...s, ui: { ...s.ui, modal: null } }));
           await backend.deleteImport(importId);
           update((s) => ({
             ...s,
@@ -1797,6 +1806,7 @@ export function createActions(store, backend = null, authService = null, storage
           }));
           await actions.loadImportsResource();
         } catch (e) {
+          // Only use alert for catastrophic backend errors which shouldn't happen often
           alert(`Не удалось удалить файл: \${e.message || "Ошибка сервера"}`);
         }
       }
