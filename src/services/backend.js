@@ -33,10 +33,42 @@ export function createBackend(apiBaseUrl) {
     loadImports() {
       return fetchJson(`${apiBaseUrl}/imports`);
     },
-    createImport(payload) {
-      return fetchJson(`${apiBaseUrl}/imports`, {
-        method: "POST",
-        body: payload instanceof FormData ? payload : JSON.stringify(payload),
+    createImport(payload, onProgress) {
+      if (!onProgress) {
+        return fetchJson(`${apiBaseUrl}/imports`, {
+          method: "POST",
+          body: payload instanceof FormData ? payload : JSON.stringify(payload),
+        });
+      }
+
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", `${apiBaseUrl}/imports`);
+        xhr.setRequestHeader("Accept", "application/json");
+        if (!(payload instanceof FormData)) {
+          xhr.setRequestHeader("Content-Type", "application/json");
+        }
+
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            onProgress(Math.round((event.loaded * 100) / event.total));
+          }
+        };
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              resolve(JSON.parse(xhr.responseText));
+            } catch (e) {
+              resolve(xhr.responseText);
+            }
+          } else {
+            reject(new Error(`Request failed: ${xhr.status} ${xhr.statusText}`));
+          }
+        };
+
+        xhr.onerror = () => reject(new Error("Network Error"));
+        xhr.send(payload instanceof FormData ? payload : JSON.stringify(payload));
       });
     },
     deleteImport(importId) {

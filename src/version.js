@@ -1,5 +1,5 @@
 export const VERSION_INFO = {
-  version: "1.1.10",
-  commit: "ai-dispatch-btn-and-status-colors",
+  version: "1.1.11",
+  commit: "native-xhr-upload-progress",
   date: new Date().toISOString()
 };

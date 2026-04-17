@@ -1740,7 +1740,15 @@ export function createActions(store, backend = null, authService = null, storage
             formData.append("manager_note", draft.managerNote || "");
 
             try {
-              const response = await backend.createImport(formData);
+              const response = await backend.createImport(formData, (percent) => {
+                setResourceState("imports", { 
+                  status: "saving", 
+                  error: null, 
+                  completed, 
+                  total,
+                  currentFilePercent: percent
+                });
+              });
               const createdImportId = response.item?.id;
 
               if (createdImportId) {
