@@ -342,7 +342,11 @@ function renderUploadFilesModal(state) {
         <div class="toolbar-actions justify-end">
           <button class="ghost-btn" data-action="closeModal">Отмена</button>
           <button class="primary-btn" data-action="createImportsFromUpload" ${isSubmitting ? "disabled" : ""} style="display:flex; align-items:center; gap:8px;">
-            ${isSubmitting ? '<div class="boot-loader" style="width:14px;height:14px;border-width:2px;"></div>Отправка файлов...' : "Создать импорт"}
+            ${isSubmitting 
+              ? `<div class="boot-loader" style="width:14px;height:14px;border-width:2px;"></div>
+                 ${importsResource.total > 1 ? `Отправка: ${importsResource.completed || 0} из ${importsResource.total}...` : "Отправка файлов..."}`
+              : "Создать импорт"
+            }
           </button>
         </div>
       </div>

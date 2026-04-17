@@ -1708,10 +1708,12 @@ export function createActions(store, backend = null, authService = null, storage
       }
 
       if (backend && currentState.runtime?.dataSource === "local-api") {
-        setResourceState("imports", { status: "saving", error: null });
+        const total = files.length;
+        let completed = 0;
+        setResourceState("imports", { status: "saving", error: null, completed, total });
+
         try {
-          const createdImports = [];
-          for (const file of files) {
+          const uploadPromises = files.map(async (file) => {
             const formData = new FormData();
             formData.append("file", file, file.name || "import_file");
             formData.append("supplier_id", supplierId);
@@ -1726,15 +1728,21 @@ export function createActions(store, backend = null, authService = null, storage
 
             const response = await backend.createImport(formData);
             const createdImportId = response.item?.id;
-            if (!createdImportId) continue;
-            
-            createdImports.push(createdImportId);
-            try {
-              await backend.dispatchImport(createdImportId, { source: "ui" });
-            } catch (dispatchError) {
-              console.warn("Failed to dispatch to n8n directly, continuing...", dispatchError);
+
+            if (createdImportId) {
+              try {
+                await backend.dispatchImport(createdImportId, { source: "ui" });
+              } catch (dispatchError) {
+                console.warn("Failed to dispatch to n8n directly, continuing...", dispatchError);
+              }
             }
-          }
+
+            completed++;
+            setResourceState("imports", { status: "saving", error: null, completed, total });
+            return createdImportId;
+          });
+
+          await Promise.allSettled(uploadPromises);
 
           await loadImportsResource();
           await loadJobsResource();
