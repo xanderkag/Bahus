@@ -971,9 +971,18 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             import threading
             def run_dispatch():
                 try:
-                    self.dispatch_to_n8n(dispatch_payload)
+                    res = self.dispatch_to_n8n(dispatch_payload)
+                    if not res:
+                        with self.db() as conn_bg:
+                            conn_bg.execute("update job_run set status = 'error', payload = payload || '{\"error\": \"n8n webhook dispatch failed\"}'::jsonb where id = %s", (job_id,))
+                            conn_bg.execute("update import_batch set status = 'error', processing_status = 'failed' where id = %s", (import_id,))
+                            conn_bg.commit()
                 except Exception as error:
                     logger.error(f"Failed to dispatch to n8n in background: {error}")
+                    with self.db() as conn_bg:
+                        conn_bg.execute("update job_run set status = 'error', payload = payload || %s::jsonb where id = %s", (json.dumps({"error": str(error)}), job_id))
+                        conn_bg.execute("update import_batch set status = 'error', processing_status = 'failed' where id = %s", (import_id,))
+                        conn_bg.commit()
                     
             threading.Thread(target=run_dispatch, daemon=True).start()
             
