@@ -134,7 +134,7 @@ export function createBackend(apiBaseUrl) {
     createQuote(payload) {
       return fetchJson(`${apiBaseUrl}/quotes`, {
         method: "POST",
-        body: JSON.stringify(payload),
+        body: payload instanceof FormData ? payload : JSON.stringify(payload),
       });
     },
     saveQuote(quoteId, payload) {

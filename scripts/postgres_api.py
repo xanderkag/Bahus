@@ -834,6 +834,14 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 )
 
             conn.commit()
+
+        try:
+            # Auto-dispatch immediately after saving the file local
+            self._trigger_n8n_import_dispatch(import_id, force=True)
+        except Exception as e:
+            logger.error(f"Auto-dispatch background trigger failed: {e}")
+
+        with self.db() as conn:
             batch_row = self.require_import(conn, import_id)
             item = self.serialize_import(conn, batch_row)
 
@@ -889,17 +897,16 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 logger.error(f"n8n response detail: {e.response.text}")
             return None
 
-    def handle_dispatch_import(self, import_id: str) -> None:
-        payload = self.read_json_body()
+    def _trigger_n8n_import_dispatch(self, import_id: str, force: bool = False) -> dict:
         with self.db() as conn:
             batch_row = self.require_import(conn, import_id)
             if batch_row is None:
-                return self.respond_json({"error": "Import not found", "import_id": import_id}, status=HTTPStatus.NOT_FOUND)
+                raise ValueError("Import not found")
 
             files = self.load_import_files(conn, import_id)
             price_file = next((item for item in files if item["file_kind"] == "price"), None)
             if price_file is None:
-                return self.respond_json({"error": "Price file not found", "import_id": import_id}, status=HTTPStatus.BAD_REQUEST)
+                raise ValueError("Price file not found")
 
             default_user_id = self.get_default_user_id(conn)
             dispatch_payload = {
@@ -910,7 +917,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 "storage_path": price_file["storage_path"],
                 "source_file": price_file["file_name"],
                 "requested_pipeline": price_file["processing_pipeline"] or infer_pipeline(price_file["source_format"]),
-                                "force": bool(payload.get("force", False)),
+                "force": force,
                 "callbackSuccessUrl": f"{os.getenv('PUBLIC_API_URL', 'http://127.0.0.1:8078')}/api/webhooks/n8n/import-result",
                 "callbackFailedUrl": f"{os.getenv('PUBLIC_API_URL', 'http://127.0.0.1:8078')}/api/webhooks/n8n/import-failed",
                 "file_binary": {
@@ -988,17 +995,25 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                     
             threading.Thread(target=run_dispatch, daemon=True).start()
             
-        return self.respond_json(
-            {
-                "item": {
-                    "import_id": import_id,
-                    "job_id": job_id,
-                    "status": "queued",
+        return {
+            "import_id": import_id,
+            "job_id": job_id,
+            "status": "queued",
+        }
+
+    def handle_dispatch_import(self, import_id: str) -> None:
+        payload = self.read_json_body()
+        try:
+            res = self._trigger_n8n_import_dispatch(import_id, force=bool(payload.get("force", False)))
+            return self.respond_json(
+                {
+                    "item": res,
+                    "dispatch": "queued",
                 },
-                "dispatch": "queued",
-            },
-            status=HTTPStatus.CREATED,
-        )
+                status=HTTPStatus.CREATED,
+            )
+        except ValueError as e:
+            return self.respond_json({"error": str(e), "import_id": import_id}, status=HTTPStatus.BAD_REQUEST)
 
     def resolve_import_file_id(self, conn, import_id: str, import_file_id: str | None) -> str | None:
         if import_file_id:
@@ -1444,7 +1459,39 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         return self.respond_json({"item": quote})
 
     def handle_create_quote(self) -> None:
-        payload = self.read_json_body()
+        content_type = self.headers.get("Content-Type", "")
+        payload = {}
+        files = []
+        
+        if "multipart/form-data" in content_type:
+            import email.parser
+            content_length_str = self.headers.get("Content-Length")
+            body = self.rfile.read(int(content_length_str))
+            msg_bytes = b"Content-Type: " + content_type.encode() + b"\r\n\r\n" + body
+            container = email.parser.BytesParser().parsebytes(msg_bytes)
+            
+            for part in container.get_payload():
+                if isinstance(part, str): continue
+                name = part.get_param("name", header="content-disposition")
+                filename = part.get_filename()
+                if filename:
+                    import uuid
+                    storage_filename = f"{uuid.uuid4()}_{filename}"
+                    storage_path = UPLOADS_DIR / storage_filename
+                    storage_path.write_bytes(part.get_payload(decode=True))
+                    files.append({
+                        "file_name": filename,
+                        "mime_type": part.get_content_type(),
+                        "storage_path": str(storage_path)
+                    })
+                else:
+                    payload[name] = part.get_payload(decode=True).decode("utf-8")
+                    
+            if "meta" in payload:
+                payload["meta"] = json.loads(payload["meta"])
+        else:
+            payload = self.read_json_body()
+
         client_id = payload.get("meta", {}).get("clientId")
         
         import uuid
@@ -1457,6 +1504,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             client_id = None
         
         note = payload.get("meta", {}).get("note", "")
+        status = "processing" if files else "draft"
         
         from datetime import datetime
         with self.db() as conn:
@@ -1465,14 +1513,58 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             
             row = conn.execute(
                 '''
-                insert into quote_document (client_id, quote_number, quote_date, note)
-                values ((select id from client_account where id = %s), %s, CURRENT_DATE, %s)
+                insert into quote_document (client_id, quote_number, quote_date, note, status)
+                values ((select id from client_account where id = %s), %s, CURRENT_DATE, %s, %s)
                 returning *
                 ''',
-                (client_id, quote_number, note)
+                (client_id, quote_number, note, status)
             ).fetchone()
+            quote_id = str(row["id"])
             quote = self.serialize_quote(conn, row)
             
+        if files:
+            # Trigger background dispatch to N8N for quotes
+            dispatch_payload = {
+                "quote_id": quote_id,
+                "note": note,
+                "file_binary": {
+                    "path": files[0]["storage_path"],
+                    "filename": files[0]["file_name"],
+                    "mime_type": files[0]["mime_type"],
+                }
+            }
+            # Queue job_run
+            with self.db() as conn:
+                job_row = conn.execute(
+                    """
+                    insert into job_run (type, target_type, target_id, status, payload)
+                    values ('quote_parse', 'quote_document', %s, 'queued', %s::jsonb)
+                    returning id
+                    """,
+                    (quote_id, json.dumps(dispatch_payload, ensure_ascii=False, default=json_default))
+                ).fetchone()
+                dispatch_payload["job_id"] = str(job_row["id"])
+                
+            def run_quote_dispatch():
+                try:
+                    if not self.config.n8n_webhook_url:
+                        return
+                    # Optionally use a different URL if you configure one, but the user wanted the same N8N flow
+                    # We pass task_type="quote_request"
+                    dispatch_payload["task_type"] = "quote_request"
+                    dispatch_payload["callbackSuccessUrl"] = f"{os.getenv('PUBLIC_API_URL', 'http://127.0.0.1:8078')}/api/webhooks/n8n/quote-result"
+                    
+                    data = {k: v for k, v in dispatch_payload.items() if k != "file_binary"}
+                    post_files = {
+                        'file': (dispatch_payload["file_binary"]["filename"], open(dispatch_payload["file_binary"]["path"], 'rb'), dispatch_payload["file_binary"]["mime_type"])
+                    }
+                    requests.post(self.config.n8n_webhook_url, data=data, files=post_files, headers={'User-Agent': 'bahus-API/1.0'}, timeout=30)
+                    post_files['file'][1].close()
+                except Exception as e:
+                    logger.error(f"Quote N8N dispatch failed: {e}")
+            import threading
+            threading.Thread(target=run_quote_dispatch, daemon=True).start()
+
         return self.respond_json({"item": quote})
 
     def handle_update_quote(self, quote_id: str) -> None:

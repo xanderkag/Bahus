@@ -1421,13 +1421,25 @@ export function createActions(store, backend = null) {
         );
         
         if (backend) {
-          const res = await backend.createQuote({
-            meta: {
+          let reqData;
+          if (snapshot.runtime.quoteRequestDraftFile) {
+            reqData = new FormData();
+            reqData.append("file", snapshot.runtime.quoteRequestDraftFile, snapshot.runtime.quoteRequestDraftFile.name);
+            reqData.append("meta", JSON.stringify({
               clientId: client?.id || "",
               requestTitle: draft.title || "",
               note: draft.note || ""
-            }
-          });
+            }));
+          } else {
+            reqData = {
+              meta: {
+                clientId: client?.id || "",
+                requestTitle: draft.title || "",
+                note: draft.note || ""
+              }
+            };
+          }
+          const res = await backend.createQuote(reqData);
           if (res.item) {
             const returnedQuote = res.item;
             createdQuoteId = returnedQuote.id;
@@ -1667,11 +1679,7 @@ export function createActions(store, backend = null) {
               const createdImportId = response.item?.id;
 
               if (createdImportId) {
-                try {
-                  await backend.dispatchImport(createdImportId, { source: "ui" });
-                } catch (dispatchError) {
-                  console.warn("Failed to dispatch to n8n directly, continuing...", dispatchError);
-                }
+                console.log(`Backend created and auto-dispatched import: ${createdImportId}`);
               }
               results.push({ status: "fulfilled", value: createdImportId });
             } catch (err) {
