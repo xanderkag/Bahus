@@ -1598,13 +1598,22 @@ export function createActions(store, backend = null) {
       const newFiles = Array.from(event?.target?.files || []);
       const currentState = store.getState();
       const existingFiles = currentState.ui.uploadDraft?.files || [];
-      
+
       const merged = [...existingFiles];
       newFiles.forEach(file => {
         if (!merged.find(f => f.name === file.name && f.size === file.size)) {
-           merged.push(file);
+          merged.push(file);
         }
       });
+
+      // Generate human-readable import reference on first file selection
+      const existingRef = currentState.ui.uploadDraft?.importRef;
+      const importRef = existingRef || (() => {
+        const d = new Date();
+        const date = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+        const rnd = String(Math.floor(Math.random() * 9000 + 1000));
+        return `ИМП-${date}-${rnd}`;
+      })();
 
       update((state) => ({
         ...state,
@@ -1613,6 +1622,7 @@ export function createActions(store, backend = null) {
           uploadDraft: {
             ...state.ui.uploadDraft,
             files: merged,
+            importRef,
           },
         },
       }));
@@ -1701,10 +1711,13 @@ export function createActions(store, backend = null) {
             .filter((r) => r.status === "fulfilled" && r.value)
             .map((r) => r.value);
 
+          const lastImportId = createdImports.at(-1);
+
+          // Preload fresh import list in bg, select the new import
           await loadImportsResource();
           await loadJobsResource();
 
-          const selectedImportId = createdImports.at(-1) || store.getState().ui.selectedImportId;
+          const selectedImportId = lastImportId || store.getState().ui.selectedImportId;
           if (selectedImportId) {
             update((state) => ({
               ...state,
@@ -1712,22 +1725,23 @@ export function createActions(store, backend = null) {
                 ...state.ui,
                 activeView: "overview",
                 selectedImportId,
-                modal: null,
-                uploadDraft: {
-                  supplierId,
-                  documentType: "price_list",
-                  requestId: "",
-                  files: [],
-                  attachments: [],
-                  managerNote: "",
-                },
               },
             }));
-            await Promise.all([
+            void Promise.all([
               loadImportStatusResource(selectedImportId),
               loadProductsResource(selectedImportId),
             ]);
           }
+
+          // SUCCESS: stay in modal, show success banner — user closes manually
+          setResourceState("imports", {
+            status: "done",
+            error: null,
+            completed: total,
+            total,
+            currentFilePercent: 100,
+            lastCreatedImportId: lastImportId || null,
+          });
           return;
         } catch (error) {
           setResourceState("imports", { status: "error", error: error.message });
@@ -1790,6 +1804,42 @@ export function createActions(store, backend = null) {
           },
         };
       });
+    },
+
+    /** Close the upload modal after user acknowledges successful upload */
+    async acceptImportUpload() {
+      const selectedImportId = store.getState().ui.selectedImportId;
+      const supplierId = store.getState().ui.uploadDraft?.supplierId;
+      update((state) => ({
+        ...state,
+        ui: {
+          ...state.ui,
+          modal: null,
+          activeView: "overview",
+          uploadDraft: {
+            supplierId: supplierId || "",
+            documentType: "price_list",
+            requestId: "",
+            files: [],
+            attachments: [],
+            managerNote: "",
+            importRef: null,
+          },
+        },
+        runtime: {
+          ...state.runtime,
+          resources: {
+            ...state.runtime.resources,
+            imports: { ...state.runtime.resources.imports, status: "ready", error: null },
+          },
+        },
+      }));
+      if (selectedImportId) {
+        await Promise.all([
+          loadImportsResource(),
+          loadProductsResource(selectedImportId),
+        ]);
+      }
     },
 
     async dispatchSelectedImport() {
