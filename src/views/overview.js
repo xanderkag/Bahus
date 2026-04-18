@@ -950,6 +950,7 @@ export function renderOverview(state) {
             <div class="toolbar-actions overview-table-actions">
               <button class="ghost-btn icon-action-btn table-add-btn" data-action="openUploadFilesModal" title="Загрузить прайс-лист">+</button>
               <button class="ghost-btn compact-action-btn" data-action="dispatchSelectedImport" ${!state.ui.selectedImportId ? "disabled" : ""} title="Отправить обрабатывать ИИ">✨ ИИ</button>
+              <button class="ghost-btn icon-action-btn table-danger-btn" style="color: var(--status-bad);" data-action="promptDeleteImport" ${!state.ui.selectedImportId ? "disabled" : ""} title="Удалить выбранный прайс">🗑️</button>
               <button class="ghost-btn compact-action-btn" data-action="openExportModal" title="Экспорт списка">Экспорт</button>
             </div>
           </div>
@@ -1017,7 +1018,6 @@ export function renderOverview(state) {
               <button class="ghost-btn compact-action-btn table-action-btn" data-action="addSelectionToQuote" title="Добавить выделенные строки в состав КП">В КП</button>
               <button class="ghost-btn compact-action-btn table-action-btn" data-action="openIssuesModal" title="Открыть список ошибок и предупреждений по текущему файлу">Проблемы</button>
               <button class="ghost-btn compact-action-btn table-action-btn" data-action="resetFilters" title="Сбросить все фильтры">Сбросить</button>
-              <button class="ghost-btn compact-action-btn table-action-btn" data-action="promptDeleteImport" ${!state.ui.selectedImportId ? "disabled" : ""} title="Удалить выбранный импорт навсегда" style="color: var(--status-bad);">Удалить</button>
               <button class="ghost-btn compact-action-btn table-action-btn" data-action="dispatchSelectedImport" ${!state.ui.selectedImportId ? "disabled" : ""} title="Запустить внешнюю ИИ-обработку текущего импорта">${currentImport?.status === 'pending' ? "ИИ-обработка..." : "Обработка ИИ"}</button>
               <button class="primary-btn compact-action-btn table-action-btn" data-action="buildQuote" title="Сформировать рабочий сценарий коммерческого предложения по выделенным строкам">Сформировать КП</button>
             </div>
