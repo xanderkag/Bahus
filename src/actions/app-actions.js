@@ -1884,33 +1884,52 @@ export function createActions(store, backend = null) {
       setResourceState("imports", { status: "saving", error: null });
       try {
         await backend.deleteImport(importId);
-        
-        await loadImportsResource();
-        const newState = store.getState();
-        const remainingImports = Object.keys(newState.entities.importsById);
-        const nextImportId = remainingImports.length > 0 ? remainingImports[0] : null;
+      } catch (err) {
+        // 404 = import doesn't exist in DB (e.g. was created in mock mode) — treat as deleted
+        const is404 = err.message?.includes("404") || err.status === 404;
+        if (!is404) {
+          console.error("Failed to delete import", err);
+          setResourceState("imports", { status: "error", error: err.message });
+          return;
+        }
+        console.warn(`Delete import ${importId}: 404 — removing from local state`);
+      }
 
-        update((currentState) => ({
+      // Remove from local state immediately
+      update((currentState) => {
+        const importsById = { ...currentState.entities.importsById };
+        const importOrder = currentState.entities.importOrder.filter((id) => id !== importId);
+        delete importsById[importId];
+        const nextImportId = importOrder[0] || null;
+        return {
           ...currentState,
+          entities: { ...currentState.entities, importsById, importOrder },
           ui: {
             ...currentState.ui,
             modal: null,
             selectedImportId: nextImportId,
             selectedRowIds: [],
+            selectedRowDetailId: null,
           },
-        }));
+        };
+      });
 
-        if (nextImportId) {
-          await loadProductsResource(nextImportId);
-        } else {
-          setResourceState("products", { status: "idle", error: null });
-        }
-      } catch (err) {
-        console.error("Failed to delete import", err);
-        setResourceState("imports", { status: "error", error: err.message });
-        alert(`Ошибка удаления: ${err.message}`);
+      // Refresh from server
+      await loadImportsResource();
+      const newState = store.getState();
+      const nextImportId = newState.entities.importOrder[0] || null;
+      setResourceState("imports", { status: "ready", error: null });
+
+      if (nextImportId) {
+        await Promise.all([
+          loadProductsResource(nextImportId),
+          loadImportStatusResource(nextImportId),
+        ]);
+      } else {
+        setResourceState("products", { status: "idle", error: null });
       }
     },
+
 
     closeModal() {
       update((state) => ({
