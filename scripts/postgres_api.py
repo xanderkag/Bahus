@@ -865,11 +865,18 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
 
             conn.commit()
 
-        try:
-            # Auto-dispatch immediately after saving the file local
-            self._trigger_n8n_import_dispatch(import_id, force=True)
-        except Exception as e:
-            logger.error(f"Auto-dispatch background trigger failed: {e}")
+        # Auto-dispatch in a background thread so the HTTP response returns immediately
+        def _bg_dispatch():
+            try:
+                n8n_logger.info(f"[N8N] AUTO-DISPATCH starting for import_id={import_id}")
+                self._trigger_n8n_import_dispatch(import_id, force=True)
+            except Exception:
+                logger.error(f"Auto-dispatch background trigger failed for import_id={import_id}:\n{traceback.format_exc()}")
+                n8n_logger.error(f"[N8N] AUTO-DISPATCH FAILED import_id={import_id}\n{traceback.format_exc()}")
+
+        import threading
+        threading.Thread(target=_bg_dispatch, daemon=True, name=f"dispatch-{import_id[:8]}").start()
+
 
         with self.db() as conn:
             batch_row = self.require_import(conn, import_id)
