@@ -352,12 +352,14 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         last_exc = None
         for i in range(retries):
             try:
-                return psycopg.connect(self.config.db_dsn, row_factory=dict_row)
+                # prepare=False prevents DuplicatePreparedStatement errors in ThreadingHTTPServer
+                return psycopg.connect(self.config.db_dsn, row_factory=dict_row, prepare_threshold=None)
             except psycopg.Error as e:
                 last_exc = e
                 logger.warning(f"Database connection attempt {i+1} failed: {e}. Retrying in 2s...")
                 time.sleep(2)
         raise last_exc
+
 
     def require_import(self, conn, import_id: str) -> dict | None:
         item = conn.execute(
