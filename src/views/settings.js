@@ -9,7 +9,7 @@ export function renderSettings(state) {
         <div class="panel-header">
           <div>
             <h2>Пользователи</h2>
-            <p>Состав команды, роли и уровень доступа. Этого достаточно для текущего прототипа.</p>
+            <p>Состав команды, роли и уровни доступа.</p>
           </div>
           <div class="toolbar-actions">
             <button class="ghost-btn" type="button" data-action="addSettingsUser">Добавить пользователя</button>
@@ -60,7 +60,7 @@ export function renderSettings(state) {
               <span>Светлая тема</span>
             </button>
           </div>
-          <div class="hint">Тема применяется ко всем экранам: импорт, позиции, КП и настройки.</div>
+
         </div>
       </article>
       <article class="panel">

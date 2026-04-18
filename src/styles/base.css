@@ -12,6 +12,11 @@ body {
   color: var(--text);
   background: var(--body-bg);
   font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--line-height-base);
+  letter-spacing: var(--letter-spacing-ui);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   transition: background 160ms ease, color 160ms ease;
 }
 
@@ -26,9 +31,20 @@ button {
   color: inherit;
 }
 
+h1, h2, h3, h4 {
+  margin: 0;
+  line-height: var(--line-height-tight);
+  letter-spacing: var(--letter-spacing-heading);
+  font-weight: 600;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
+}
+
+td, th {
+  font-feature-settings: "tnum";
 }
 
 pre,

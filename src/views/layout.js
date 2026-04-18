@@ -3,12 +3,11 @@ import { renderOverview } from "./overview.js";
 import { renderQuote } from "./quote.js";
 import { renderSettings } from "./settings.js";
 import { escapeHtml, formatDateTime, formatImportStatus, formatValue, getImportStatusClass } from "../utils/format.js";
-import { VERSION_INFO } from "../version.js";
 
 const navigation = [
-  { id: "overview", label: "Импорт файлов", icon: "ИФ" },
-  { id: "quote", label: "КП", icon: "КП" },
-  { id: "items", label: "Позиции", icon: "ПО" },
+  { id: "overview", label: "Импорт файлов", icon: "⬆" },
+  { id: "quote", label: "КП", icon: "◈" },
+  { id: "items", label: "Позиции", icon: "☰" },
   { id: "settings", label: "Настройки", icon: "⚙" },
 ];
 
@@ -27,7 +26,7 @@ const pageMeta = {
   },
   settings: {
     title: "Настройки",
-    subtitle: "Тема, пользователи и базовые параметры рабочего контура.",
+    subtitle: "Тема, пользователи и параметры системы.",
   },
 };
 
@@ -256,7 +255,7 @@ function renderUploadFilesModal(state) {
                         .join("")}
                     </div>
                   `
-                : '<div class="hint">Можно кидать файл за файлом. При множественном выборе каждый файл будет создан как отдельный импорт.</div>'
+                : ''
             }
           </div>
         </div>
@@ -266,11 +265,7 @@ function renderUploadFilesModal(state) {
           <textarea class="input textarea compact-textarea" placeholder="Укажите важные детали или комментарии для себя..." data-input="setUploadDraftField" data-field="managerNote">${escapeHtml(draft.managerNote || "")}</textarea>
         </div>
 
-        <div class="inline-card">
-          <div class="hint" style="margin:0;">
-            <strong>Как это работает</strong>: Импорт будет загружен в защищенное хранилище и сразу встанет в очередь фоновой ИИ-обработки.
-          </div>
-        </div>
+
         ${importsResource.error ? `<div class="hint hint-error">Не удалось создать импорт: ${escapeHtml(importsResource.error)}</div>` : ""}
         <div class="toolbar-actions justify-end">
           <button class="ghost-btn" data-action="closeModal">Отмена</button>
@@ -296,7 +291,7 @@ function renderExportModal(state) {
         <div class="dialog-header">
           <div>
             <h3>Экспорт</h3>
-            <p>Пока это заглушка под будущую выгрузку. Дальше сюда можно подключить CSV, JSON и другие форматы.</p>
+            <p>Выберите формат для выгрузки данных.</p>
           </div>
           <button class="ghost-btn" data-action="closeModal">Закрыть</button>
         </div>
@@ -309,7 +304,7 @@ function renderExportModal(state) {
               data-action="setExportFormat"
               data-format="csv"
             >
-              Экспорт CSV
+              CSV
             </button>
             <button
               class="segmented-option ${draft.format === "json" ? "is-active" : ""}"
@@ -317,21 +312,13 @@ function renderExportModal(state) {
               data-action="setExportFormat"
               data-format="json"
             >
-              Экспорт JSON
+              JSON
             </button>
-          </div>
-          <div class="inline-card">
-            <div class="inline-card-header">
-              <strong>Что будет дальше</strong>
-            </div>
-            <div class="hint">
-              Для импорта в другие системы сюда можно будет подключить выгрузку CSV, JSON, а позже и интеграции с учётной системой или базой клиента.
-            </div>
           </div>
         </div>
         <div class="toolbar-actions justify-end">
           <button class="ghost-btn" data-action="closeModal">Отмена</button>
-          <button class="primary-btn" data-action="closeModal">Понятно</button>
+          <button class="primary-btn" data-action="closeModal">Скачать</button>
         </div>
       </div>
     </div>
@@ -373,13 +360,6 @@ export function renderConfirmDeleteImportModal(state) {
 export function renderLayout(state) {
   const meta = pageMeta[state.ui.activeView];
   const isSidebarCollapsed = Boolean(state.ui.sidebarCollapsed);
-  const runtime = state.runtime || {
-    dataSource: "unknown",
-    dataSourceLabel: "unknown",
-    bootstrapMode: "unknown",
-    bootstrapError: null,
-  };
-  const showRuntimeMeta = !["overview", "quote"].includes(state.ui.activeView);
   return `
     <div class="shell ${isSidebarCollapsed ? "sidebar-collapsed" : ""}">
       <aside class="sidebar">
@@ -387,8 +367,7 @@ export function renderLayout(state) {
           <div class="brand-identity">
             <div class="brand-mark"></div>
             <div class="brand-copy">
-              <div class="brand-title">Bahus Assistant</div>
-              <div class="brand-subtitle">local workspace</div>
+              <div class="brand-title">Bahus</div>
             </div>
           </div>
           <button
@@ -425,20 +404,8 @@ export function renderLayout(state) {
       <main class="main">
         <header class="topbar">
           <div>
-            <div class="eyebrow">Bahus Assistant / Workspace <span class="pill pill-accent" style="margin-left: 8px; font-variant-numeric: tabular-nums;" title="Обновлено: ${escapeHtml(VERSION_INFO.date)}">v${escapeHtml(VERSION_INFO.version)} (${escapeHtml(VERSION_INFO.commit)})</span></div>
             <h1>${meta.title}</h1>
             ${meta.subtitle ? `<p>${meta.subtitle}</p>` : ""}
-            ${
-              showRuntimeMeta
-                ? `
-                    <div class="topbar-meta topbar-meta-subtle">
-                      <span class="pill">${runtime.dataSourceLabel}</span>
-                      <span class="pill">${runtime.bootstrapMode}</span>
-                      ${runtime.bootstrapError ? `<span class="pill pill-warn">fallback after bootstrap error</span>` : ""}
-                    </div>
-                  `
-                : ""
-            }
           </div>
         </header>
 

@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import argparse
+import email.parser
 import json
 import logging
+import logging.handlers
 import os
 import time
 import traceback
 import threading
+import uuid
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
@@ -16,9 +19,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from uuid import UUID
-import uuid
 
 import requests
+
+log_dir = Path(__file__).resolve().parent.parent / ".local" / "logs"
+log_dir.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -27,14 +32,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger("bahus-api")
 
-import logging.handlers
-log_dir = Path(__file__).resolve().parent.parent / ".local" / "logs"
-log_dir.mkdir(parents=True, exist_ok=True)
-file_handler = logging.handlers.RotatingFileHandler(
+_file_handler = logging.handlers.RotatingFileHandler(
     log_dir / "api.log", maxBytes=5_000_000, backupCount=5
 )
-file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
-logger.addHandler(file_handler)
+_file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+logger.addHandler(_file_handler)
+
+# ── Dedicated n8n structured logger ──────────────────────────────────────────
+n8n_logger = logging.getLogger("bahus-api.n8n")
+_n8n_file_handler = logging.handlers.RotatingFileHandler(
+    log_dir / "n8n.log", maxBytes=5_000_000, backupCount=5
+)
+_n8n_file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+n8n_logger.addHandler(_n8n_file_handler)
+n8n_logger.propagate = True  # also show in main log / stdout
 
 try:
     import psycopg
@@ -280,6 +291,53 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         content_length = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(content_length) if content_length else b"{}"
         return json.loads(raw.decode("utf-8"))
+
+    def parse_multipart_body(self) -> tuple[dict, list[dict]]:
+        """Parse multipart/form-data. Returns (payload_dict, files_list).
+
+        Each file entry has keys: file_name, original_name, mime_type,
+        size_bytes, storage_path, file_kind.
+        Text fields are returned as strings in payload_dict.
+        """
+        content_type = self.headers.get("Content-Type", "")
+        content_length_str = self.headers.get("Content-Length")
+        if not content_length_str:
+            return {}, []
+        body = self.rfile.read(int(content_length_str))
+        msg_bytes = b"Content-Type: " + content_type.encode() + b"\r\n\r\n" + body
+        container = email.parser.BytesParser().parsebytes(msg_bytes)
+
+        payload: dict = {}
+        files: list[dict] = []
+        for part in container.get_payload():
+            if isinstance(part, str):
+                continue
+            name = part.get_param("name", header="content-disposition")
+            filename = part.get_filename()
+            if filename:
+                storage_filename = f"{uuid.uuid4()}_{filename}"
+                storage_path = UPLOADS_DIR / storage_filename
+                raw_bytes = part.get_payload(decode=True)
+                storage_path.write_bytes(raw_bytes)
+                files.append({
+                    "file_name": filename,
+                    "original_name": filename,
+                    "mime_type": part.get_content_type(),
+                    "size_bytes": len(raw_bytes),
+                    "storage_path": str(storage_path),
+                    "file_kind": "price" if name == "file" else "attachment",
+                })
+            else:
+                payload[name] = part.get_payload(decode=True).decode("utf-8")
+        return payload, files
+
+    def validate_uuid(self, value: str) -> bool:
+        """Return True if *value* is a valid UUID string."""
+        try:
+            uuid.UUID(str(value))
+            return True
+        except (ValueError, AttributeError):
+            return False
 
     def respond_json(self, payload: dict, status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(payload, ensure_ascii=False, default=json_default).encode("utf-8")
@@ -710,35 +768,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
     def handle_create_import(self) -> None:
         content_type = self.headers.get("Content-Type", "")
         if "multipart/form-data" in content_type:
-            import email.parser
-            from email.policy import HTTP
-            content_length = int(self.headers.get("Content-Length"))
-            body = self.rfile.read(content_length)
-            
-            msg_bytes = b"Content-Type: " + content_type.encode() + b"\r\n\r\n" + body
-            container = email.parser.BytesParser(policy=HTTP).parsebytes(msg_bytes)
-            
-            payload = {}
-            files = []
-            for part in container.get_payload():
-                if isinstance(part, str): continue
-                name = part.get_param("name", header="content-disposition")
-                filename = part.get_filename()
-                if filename:
-                    storage_filename = f"{uuid.uuid4()}_{filename}"
-                    storage_path = UPLOADS_DIR / storage_filename
-                    storage_path.write_bytes(part.get_payload(decode=True))
-                    public_path = str(storage_path)
-                    files.append({
-                        "file_name": filename,
-                        "mime_type": part.get_content_type(),
-                        "size_bytes": len(part.get_payload(decode=True)),
-                        "storage_path": public_path,
-                        "file_kind": "price" if name == "file" else "attachment",
-                        "original_name": filename
-                    })
-                else:
-                    payload[name] = part.get_payload(decode=True).decode("utf-8")
+            payload, files = self.parse_multipart_body()
             payload["files"] = files
             payload["attachments"] = [f for f in files if f["file_kind"] == "attachment"]
         else:
@@ -848,53 +878,73 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         return self.respond_json({"item": item}, status=HTTPStatus.CREATED)
 
     def dispatch_to_n8n(self, dispatch_payload: dict) -> dict | None:
+        """Send *dispatch_payload* to the configured n8n webhook.
+
+        Uses correlation_id (present in dispatch_payload) for structured logging.
+        Properly closes file descriptors via context manager.
+        Returns the parsed JSON response or None on failure.
+        """
         if not self.config.n8n_webhook_url:
-            logger.warning("N8N_IMPORT_WEBHOOK_URL is not configured")
+            n8n_logger.warning("[N8N] SKIP — N8N_IMPORT_WEBHOOK_URL is not configured")
             return None
 
-        # Prepare payload and files for 'requests'
+        correlation_id = dispatch_payload.get("correlation_id", "-")
+        job_id = dispatch_payload.get("job_id", "-")
+        import_id = dispatch_payload.get("import_batch_id") or dispatch_payload.get("quote_id", "-")
+        pipeline = dispatch_payload.get("requested_pipeline") or dispatch_payload.get("task_type", "-")
+        source_file = dispatch_payload.get("source_file") or "-"
+
         data = {k: v for k, v in dispatch_payload.items() if k != "file_binary"}
-        files = None
-
         file_info = dispatch_payload.get("file_binary")
-        if file_info and file_info.get("path") and os.path.exists(file_info["path"]):
-            filename = file_info["filename"]
-            mime_type = file_info.get("mime_type", "application/octet-stream")
-            # Open file specifically for this request
-            files = {
-                'file': (filename, open(file_info["path"], 'rb'), mime_type)
-            }
 
+        n8n_logger.info(
+            f"[N8N] DISPATCH → url={self.config.n8n_webhook_url} "
+            f"correlation_id={correlation_id} job_id={job_id} "
+            f"target={import_id} pipeline={pipeline} file={source_file}"
+        )
+
+        t_start = time.monotonic()
         try:
-            logger.info(f"Dispatching to n8n: {self.config.n8n_webhook_url}")
-            # We use PUBLIC_API_URL context (hardcoded logic in original script preserved for Origin)
-            headers = {
-                'User-Agent': 'bahus-API/1.0',
-            }
-            
-            response = requests.post(
-                self.config.n8n_webhook_url,
-                data=data,
-                files=files,
-                headers=headers,
-                timeout=30
-            )
+            headers = {"User-Agent": "bahus-API/1.0"}
+
+            if file_info and file_info.get("path") and os.path.exists(file_info["path"]):
+                filename = file_info["filename"]
+                mime_type = file_info.get("mime_type", "application/octet-stream")
+                with open(file_info["path"], "rb") as fh:
+                    response = requests.post(
+                        self.config.n8n_webhook_url,
+                        data=data,
+                        files={"file": (filename, fh, mime_type)},
+                        headers=headers,
+                        timeout=30,
+                    )
+            else:
+                response = requests.post(
+                    self.config.n8n_webhook_url,
+                    data=data,
+                    headers=headers,
+                    timeout=30,
+                )
+
+            latency = time.monotonic() - t_start
             response.raise_for_status()
-            
-            # Close file if opened
-            if files:
-                files['file'][1].close()
-                
             result = response.json() if response.text else {}
-            logger.info(f"n8n response: {response.status_code}")
+            n8n_logger.info(
+                f"[N8N] RESPONSE ← status={response.status_code} "
+                f"latency={latency:.2f}s correlation_id={correlation_id} "
+                f"response_size={len(response.content)}B"
+            )
             return result
-            
+
         except requests.exceptions.RequestException as e:
-            if files:
-                files['file'][1].close()
-            logger.error(f"n8n dispatch failed: {e}")
-            if hasattr(e, 'response') and e.response is not None:
-                logger.error(f"n8n response detail: {e.response.text}")
+            latency = time.monotonic() - t_start
+            detail = ""
+            if hasattr(e, "response") and e.response is not None:
+                detail = f" body={e.response.text[:300]}"
+            n8n_logger.error(
+                f"[N8N] ERROR ← latency={latency:.2f}s correlation_id={correlation_id} "
+                f"error={e}{detail}"
+            )
             return None
 
     def _trigger_n8n_import_dispatch(self, import_id: str, force: bool = False) -> dict:
@@ -909,6 +959,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 raise ValueError("Price file not found")
 
             default_user_id = self.get_default_user_id(conn)
+            correlation_id = str(uuid.uuid4())
             dispatch_payload = {
                 "import_batch_id": import_id,
                 "import_file_id": price_file["id"],
@@ -918,13 +969,14 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 "source_file": price_file["file_name"],
                 "requested_pipeline": price_file["processing_pipeline"] or infer_pipeline(price_file["source_format"]),
                 "force": force,
+                "correlation_id": correlation_id,
                 "callbackSuccessUrl": f"{os.getenv('PUBLIC_API_URL', 'http://127.0.0.1:8078')}/api/webhooks/n8n/import-result",
                 "callbackFailedUrl": f"{os.getenv('PUBLIC_API_URL', 'http://127.0.0.1:8078')}/api/webhooks/n8n/import-failed",
                 "file_binary": {
                     "path": price_file["storage_path"],
                     "filename": price_file["file_name"],
                     "mime_type": price_file["mime_type"],
-                }
+                },
             }
             job_row = conn.execute(
                 """
@@ -977,24 +1029,45 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             conn.commit()
 
         if self.config.n8n_webhook_url:
-            import threading
             def run_dispatch():
                 try:
                     res = self.dispatch_to_n8n(dispatch_payload)
                     if not res:
+                        n8n_logger.error(
+                            f"[N8N] DISPATCH_FAILED import_id={import_id} "
+                            f"correlation_id={correlation_id} job_id={job_id} — "
+                            "n8n returned empty or error response"
+                        )
                         with self.db() as conn_bg:
-                            conn_bg.execute("update job_run set status = 'error', payload = payload || '{\"error\": \"n8n webhook dispatch failed\"}'::jsonb where id = %s", (job_id,))
-                            conn_bg.execute("update import_batch set status = 'error', processing_status = 'failed' where id = %s", (import_id,))
+                            conn_bg.execute(
+                                "update job_run set status = 'error', "
+                                "payload = payload || '{\"error\": \"n8n webhook dispatch failed\"}'::jsonb "
+                                "where id = %s",
+                                (job_id,),
+                            )
+                            conn_bg.execute(
+                                "update import_batch set status = 'error', processing_status = 'failed' where id = %s",
+                                (import_id,),
+                            )
                             conn_bg.commit()
                 except Exception as error:
-                    logger.error(f"Failed to dispatch to n8n in background: {error}")
+                    n8n_logger.error(
+                        f"[N8N] DISPATCH_EXCEPTION import_id={import_id} "
+                        f"correlation_id={correlation_id} job_id={job_id} error={error}"
+                    )
                     with self.db() as conn_bg:
-                        conn_bg.execute("update job_run set status = 'error', payload = payload || %s::jsonb where id = %s", (json.dumps({"error": str(error)}), job_id))
-                        conn_bg.execute("update import_batch set status = 'error', processing_status = 'failed' where id = %s", (import_id,))
+                        conn_bg.execute(
+                            "update job_run set status = 'error', payload = payload || %s::jsonb where id = %s",
+                            (json.dumps({"error": str(error)}), job_id),
+                        )
+                        conn_bg.execute(
+                            "update import_batch set status = 'error', processing_status = 'failed' where id = %s",
+                            (import_id,),
+                        )
                         conn_bg.commit()
-                    
+
             threading.Thread(target=run_dispatch, daemon=True).start()
-            
+
         return {
             "import_id": import_id,
             "job_id": job_id,
@@ -1035,6 +1108,16 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         import_id = payload.get("import_batch_id") or payload.get("import_id")
         if not import_id:
             return self.respond_json({"error": "import_batch_id is required"}, status=HTTPStatus.BAD_REQUEST)
+
+        correlation_id = payload.get("correlation_id", "-")
+        rows_count = len(payload.get("rows") or [])
+        issues_count = len(payload.get("issues") or [])
+        n8n_logger.info(
+            f"[N8N] WEBHOOK ← /api/webhooks/n8n/import-result "
+            f"import_id={import_id} correlation_id={correlation_id} "
+            f"rows={rows_count} issues={issues_count} "
+            f"status={payload.get('status', '?')} pipeline={payload.get('pipeline', '?')}"
+        )
 
         with self.db() as conn:
             batch_row = self.require_import(conn, import_id)
@@ -1178,6 +1261,14 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         if not import_id:
             return self.respond_json({"error": "import_batch_id is required"}, status=HTTPStatus.BAD_REQUEST)
 
+        correlation_id = payload.get("correlation_id", "-")
+        error_msg = payload.get("error") or payload.get("message") or "unknown"
+        n8n_logger.error(
+            f"[N8N] WEBHOOK ← /api/webhooks/n8n/import-failed "
+            f"import_id={import_id} correlation_id={correlation_id} "
+            f"error={error_msg!r}"
+        )
+
         with self.db() as conn:
             batch_row = self.require_import(conn, import_id)
             if batch_row is None:
@@ -1237,12 +1328,15 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         quote_id = payload.get("quote_id") or payload.get("import_id") or payload.get("import_batch_id")
         if not quote_id:
             return self.respond_json({"error": "quote_id is required"}, status=HTTPStatus.BAD_REQUEST)
-        
-        import uuid
-        try:
-            uuid.UUID(str(quote_id))
-        except ValueError:
+        if not self.validate_uuid(quote_id):
             return self.respond_json({"error": "Invalid quote_id format"}, status=HTTPStatus.BAD_REQUEST)
+
+        correlation_id = payload.get("correlation_id", "-")
+        rows_count = len(payload.get("rows") or [])
+        n8n_logger.info(
+            f"[N8N] WEBHOOK ← /api/webhooks/n8n/quote-result "
+            f"quote_id={quote_id} correlation_id={correlation_id} rows={rows_count}"
+        )
 
         # Сохраняем сырой ответ от n8n локально на случай ошибок парсинга
         try:
@@ -1303,15 +1397,18 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         quote_id = payload.get("quote_id") or payload.get("import_id") or payload.get("import_batch_id")
         if not quote_id:
             return self.respond_json({"error": "quote_id is required"}, status=HTTPStatus.BAD_REQUEST)
-            
-        import uuid
-        try:
-            uuid.UUID(str(quote_id))
-        except ValueError:
+        if not self.validate_uuid(quote_id):
             return self.respond_json({"error": "Invalid quote_id format"}, status=HTTPStatus.BAD_REQUEST)
-            
+
+        correlation_id = payload.get("correlation_id", "-")
+        error_msg = payload.get("error") or payload.get("message") or "unknown"
+        n8n_logger.error(
+            f"[N8N] WEBHOOK ← /api/webhooks/n8n/quote-failed "
+            f"quote_id={quote_id} correlation_id={correlation_id} error={error_msg!r}"
+        )
+
         with self.db() as conn:
-            if payload.get("job_id") and len(str(payload.get("job_id"))) == 36 and "-" in str(payload.get("job_id")):
+            if payload.get("job_id") and self.validate_uuid(payload["job_id"]):
                 conn.execute(
                     """
                     update job_run
@@ -1324,6 +1421,12 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                     """,
                     (json.dumps(payload, ensure_ascii=False, default=json_default), payload["job_id"]),
                 )
+            # Fix: update quote_document status so it doesn't stay stuck as 'processing'
+            conn.execute(
+                "update quote_document set status = 'failed' where id = %s",
+                (quote_id,),
+            )
+            conn.commit()
         return self.respond_json({"item": {"quote_id": quote_id, "status": "failed"}})
 
     def handle_get_quote_draft(self) -> None:
@@ -1349,46 +1452,49 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             return self.respond_json({"error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def handle_proxy_n8n(self) -> None:
-
-        import email.parser
         content_type = self.headers.get("Content-Type", "")
         if "multipart/form-data" not in content_type:
             return self.respond_json({"error": "multipart/form-data required"}, status=HTTPStatus.BAD_REQUEST)
-            
-        content_length_str = self.headers.get("Content-Length")
-        if not content_length_str:
+        if not self.headers.get("Content-Length"):
             return self.respond_json({"error": "Content-Length required"}, status=HTTPStatus.LENGTH_REQUIRED)
-            
-        body = self.rfile.read(int(content_length_str))
-        msg_bytes = b"Content-Type: " + content_type.encode() + b"\r\n\r\n" + body
-        container = email.parser.BytesParser().parsebytes(msg_bytes)
-        
-        payload = {}
-        files = {}
-        for part in container.get_payload():
-            if isinstance(part, str): continue
-            name = part.get_param("name", header="content-disposition")
-            filename = part.get_filename()
-            if filename:
-                files[name] = (filename, part.get_payload(decode=True), part.get_content_type())
-            else:
-                payload[name] = part.get_payload(decode=True).decode("utf-8")
-                
+
+        payload, files_list = self.parse_multipart_body()
+        # Re-build files dict suitable for requests (name → (filename, bytes, mime))
+        files_for_requests = {
+            f["file_kind"]: (f["file_name"], open(f["storage_path"], "rb"), f["mime_type"])
+            for f in files_list
+        }
+
         target_url = payload.pop("target_webhook_url", None)
         if not target_url:
+            # Close any opened file handles before returning
+            for _, fh, _ in files_for_requests.values() if files_for_requests else []:
+                fh.close()
             return self.respond_json({"error": "target_webhook_url required in form data"}, status=HTTPStatus.BAD_REQUEST)
-            
+
+        n8n_logger.info(f"[N8N] PROXY → target={target_url} files={list(files_for_requests.keys())}")
         try:
-            r = requests.post(target_url, data=payload, files=files if files else None, timeout=60)
+            r = requests.post(
+                target_url,
+                data=payload,
+                files=files_for_requests if files_for_requests else None,
+                timeout=60,
+            )
+            for _, fh, _ in (files_for_requests.values() if files_for_requests else []):
+                fh.close()
             r.raise_for_status()
-            
+            n8n_logger.info(f"[N8N] PROXY ← status={r.status_code} target={target_url}")
             try:
                 return self.respond_json(r.json())
             except ValueError:
                 return self.respond_json({"message": "Proxy ok, no JSON response", "raw_response": r.text})
-                
         except requests.exceptions.RequestException as e:
-            logger.error(f"Proxy to n8n failed: {e}")
+            for _, fh, _ in (files_for_requests.values() if files_for_requests else []):
+                try:
+                    fh.close()
+                except Exception:
+                    pass
+            n8n_logger.error(f"[N8N] PROXY_ERROR target={target_url} error={e}")
             msg = e.response.text if hasattr(e, "response") and e.response else str(e)
             return self.respond_json({"error": "N8n proxy request failed", "details": msg}, status=HTTPStatus.BAD_GATEWAY)
 
@@ -1445,10 +1551,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         return self.respond_json({"items": quotes})
 
     def handle_get_quote(self, quote_id: str) -> None:
-        import uuid
-        try:
-            uuid.UUID(str(quote_id))
-        except ValueError:
+        if not self.validate_uuid(quote_id):
             return self.respond_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
             
         with self.db() as conn:
@@ -1460,80 +1563,53 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
 
     def handle_create_quote(self) -> None:
         content_type = self.headers.get("Content-Type", "")
-        payload = {}
-        files = []
-        
         if "multipart/form-data" in content_type:
-            import email.parser
-            content_length_str = self.headers.get("Content-Length")
-            body = self.rfile.read(int(content_length_str))
-            msg_bytes = b"Content-Type: " + content_type.encode() + b"\r\n\r\n" + body
-            container = email.parser.BytesParser().parsebytes(msg_bytes)
-            
-            for part in container.get_payload():
-                if isinstance(part, str): continue
-                name = part.get_param("name", header="content-disposition")
-                filename = part.get_filename()
-                if filename:
-                    import uuid
-                    storage_filename = f"{uuid.uuid4()}_{filename}"
-                    storage_path = UPLOADS_DIR / storage_filename
-                    storage_path.write_bytes(part.get_payload(decode=True))
-                    files.append({
-                        "file_name": filename,
-                        "mime_type": part.get_content_type(),
-                        "storage_path": str(storage_path)
-                    })
-                else:
-                    payload[name] = part.get_payload(decode=True).decode("utf-8")
-                    
+            payload, files = self.parse_multipart_body()
             if "meta" in payload:
                 payload["meta"] = json.loads(payload["meta"])
         else:
             payload = self.read_json_body()
+            files = []
 
         client_id = payload.get("meta", {}).get("clientId")
-        
-        import uuid
-        if client_id:
-            try:
-                uuid.UUID(str(client_id))
-            except ValueError:
-                client_id = None
-        else:
+        if client_id and not self.validate_uuid(client_id):
             client_id = None
-        
+
         note = payload.get("meta", {}).get("note", "")
         status = "processing" if files else "draft"
-        
-        from datetime import datetime
+
         with self.db() as conn:
-            count = conn.execute("select count(*) from quote_document where date_trunc('day', created_at) = date_trunc('day', now())").fetchone()["count"]
+            count = conn.execute(
+                "select count(*) from quote_document where date_trunc('day', created_at) = date_trunc('day', now())"
+            ).fetchone()["count"]
             quote_number = f"КП-{datetime.now().strftime('%Y%m%d')}-{count+1}"
-            
+
             row = conn.execute(
                 '''
                 insert into quote_document (client_id, quote_number, quote_date, note, status)
                 values ((select id from client_account where id = %s), %s, CURRENT_DATE, %s, %s)
                 returning *
                 ''',
-                (client_id, quote_number, note, status)
+                (client_id, quote_number, note, status),
             ).fetchone()
             quote_id = str(row["id"])
             quote = self.serialize_quote(conn, row)
-            
+
         if files:
-            # Trigger background dispatch to N8N for quotes
+            correlation_id = str(uuid.uuid4())
             dispatch_payload = {
                 "quote_id": quote_id,
+                "task_type": "quote_request",
                 "note": note,
+                "correlation_id": correlation_id,
+                "callbackSuccessUrl": f"{os.getenv('PUBLIC_API_URL', 'http://127.0.0.1:8078')}/api/webhooks/n8n/quote-result",
+                "callbackFailedUrl": f"{os.getenv('PUBLIC_API_URL', 'http://127.0.0.1:8078')}/api/webhooks/n8n/quote-failed",
                 "file_binary": {
                     "path": files[0]["storage_path"],
                     "filename": files[0]["file_name"],
                     "mime_type": files[0]["mime_type"],
-                }
+                },
             }
-            # Queue job_run
             with self.db() as conn:
                 job_row = conn.execute(
                     """
@@ -1541,37 +1617,51 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                     values ('quote_parse', 'quote_document', %s, 'queued', %s::jsonb)
                     returning id
                     """,
-                    (quote_id, json.dumps(dispatch_payload, ensure_ascii=False, default=json_default))
+                    (quote_id, json.dumps(dispatch_payload, ensure_ascii=False, default=json_default)),
                 ).fetchone()
                 dispatch_payload["job_id"] = str(job_row["id"])
-                
+                conn.commit()
+
             def run_quote_dispatch():
+                if not self.config.n8n_webhook_url:
+                    n8n_logger.warning(
+                        f"[N8N] SKIP quote_id={quote_id} — N8N_IMPORT_WEBHOOK_URL not configured"
+                    )
+                    return
+                n8n_logger.info(
+                    f"[N8N] DISPATCH → quote_id={quote_id} "
+                    f"correlation_id={correlation_id} job_id={dispatch_payload['job_id']}"
+                )
                 try:
-                    if not self.config.n8n_webhook_url:
-                        return
-                    # Optionally use a different URL if you configure one, but the user wanted the same N8N flow
-                    # We pass task_type="quote_request"
-                    dispatch_payload["task_type"] = "quote_request"
-                    dispatch_payload["callbackSuccessUrl"] = f"{os.getenv('PUBLIC_API_URL', 'http://127.0.0.1:8078')}/api/webhooks/n8n/quote-result"
-                    
-                    data = {k: v for k, v in dispatch_payload.items() if k != "file_binary"}
-                    post_files = {
-                        'file': (dispatch_payload["file_binary"]["filename"], open(dispatch_payload["file_binary"]["path"], 'rb'), dispatch_payload["file_binary"]["mime_type"])
-                    }
-                    requests.post(self.config.n8n_webhook_url, data=data, files=post_files, headers={'User-Agent': 'bahus-API/1.0'}, timeout=30)
-                    post_files['file'][1].close()
+                    result = self.dispatch_to_n8n(dispatch_payload)
+                    if result:
+                        n8n_logger.info(
+                            f"[N8N] QUOTE_OK quote_id={quote_id} "
+                            f"correlation_id={correlation_id}"
+                        )
+                    else:
+                        n8n_logger.error(
+                            f"[N8N] QUOTE_FAILED quote_id={quote_id} "
+                            f"correlation_id={correlation_id} — empty response from n8n"
+                        )
+                        with self.db() as conn_bg:
+                            conn_bg.execute(
+                                "update quote_document set status = 'failed' where id = %s",
+                                (quote_id,),
+                            )
+                            conn_bg.commit()
                 except Exception as e:
-                    logger.error(f"Quote N8N dispatch failed: {e}")
-            import threading
+                    n8n_logger.error(
+                        f"[N8N] QUOTE_EXCEPTION quote_id={quote_id} "
+                        f"correlation_id={correlation_id} error={e}"
+                    )
+
             threading.Thread(target=run_quote_dispatch, daemon=True).start()
 
         return self.respond_json({"item": quote})
 
     def handle_update_quote(self, quote_id: str) -> None:
-        import uuid
-        try:
-            uuid.UUID(str(quote_id))
-        except ValueError:
+        if not self.validate_uuid(quote_id):
             return self.respond_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
             
         payload = self.read_json_body()

@@ -30,6 +30,10 @@
   --text-lg: 18px;
   --text-xl: 22px;
   --text-xxl: 32px;
+  --line-height-base: 1.55;
+  --line-height-tight: 1.25;
+  --letter-spacing-heading: -0.02em;
+  --letter-spacing-ui: -0.01em;
 }
 
 :root[data-theme="light"] {
