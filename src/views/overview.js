@@ -232,10 +232,12 @@ function renderImportColumnMenu(state, column) {
 
 function renderImportsTable(state) {
   const selectedImportId = state.ui.selectedImportId;
+  const processingStatuses = new Set(["queued", "pending", "processing"]);
   return getVisibleImports(state)
     .map((item, index) => {
       const supplier = state.entities.suppliersById[item.supplier_id];
       const issueCount = item.issue_ids.length;
+      const isProcessing = processingStatuses.has(item.status);
       return `
         <tr class="${selectedImportId === item.id ? "is-active" : ""}">
           <td>${index + 1}</td>
@@ -248,7 +250,12 @@ function renderImportsTable(state) {
           <td>${escapeHtml((item.meta.source_format || "").toUpperCase() || "—")}</td>
           <td>${escapeHtml(formatValue(supplier?.name))}</td>
           <td>${escapeHtml(formatDocumentType(item.meta.document_type))}</td>
-          <td><span class="status-pill ${getImportStatusClass(item.status)}">${escapeHtml(formatImportStatus(item.status))}</span></td>
+          <td>
+            <span class="status-pill ${getImportStatusClass(item.status)}${isProcessing ? " status-pill-processing" : ""}">
+              ${isProcessing ? '<span class="status-pill-spinner"></span>' : ""}
+              ${escapeHtml(formatImportStatus(item.status))}
+            </span>
+          </td>
           <td><span class="pill">${issueCount} проблем</span></td>
         </tr>
       `;
@@ -968,6 +975,19 @@ export function renderOverview(state) {
       </div>
 
       <article class="panel overview-products-panel">
+        ${
+          currentImport && ["queued", "pending", "processing"].includes(currentImport.status)
+            ? `
+              <div class="import-processing-banner">
+                <div class="boot-loader" style="width:16px;height:16px;border-width:2px;flex-shrink:0;"></div>
+                <div class="import-processing-banner-copy">
+                  <strong>Файл передан на обработку</strong>
+                  <span>ИИ анализирует прайс-лист. Данные появятся автоматически — можно не ждать у экрана.</span>
+                </div>
+              </div>
+            `
+            : ""
+        }
         <div class="panel-header overview-panel-header">
           <div class="overview-panel-headline">
             <h2>Позиции</h2>
@@ -1030,6 +1050,22 @@ export function renderOverview(state) {
 
       ${renderIssuesModal(state)}
       ${renderRowDetailModal(state)}
+      ${
+        currentImport && ["queued", "pending", "processing"].includes(currentImport.status) && visibleProducts.length === 0
+          ? `
+            <style>
+              .overview-products-panel .overview-table-wrap { display: none; }
+            </style>
+            <div class="import-not-ready-empty">
+              <div class="boot-loader" style="width:24px;height:24px;border-width:3px;"></div>
+              <div>
+                <strong>Файл обрабатывается</strong>
+                <p>ИИ разбирает строки прайс-листа. Таблица позиций заполнится автоматически после завершения.</p>
+              </div>
+            </div>
+          `
+          : ""
+      }
     </section>
   `;
 }

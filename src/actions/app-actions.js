@@ -954,6 +954,7 @@ export function createActions(store, backend = null) {
           selectedImportId: nextImportId,
           selectedRowIds: [],
           selectedRowDetailId: null,
+          activeColumnFilter: null,
         },
       }));
       if (store.getState().runtime?.dataSource === "local-api") {

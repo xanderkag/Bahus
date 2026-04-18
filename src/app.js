@@ -116,8 +116,8 @@ async function main() {
     const importId = state.ui.selectedImportId;
     if (!importId) return false;
     const status = state.entities.importsById[importId]?.status;
-    // "uploaded" = file created, not yet dispatched — no need to poll
-    return ["uploaded", "queued", "pending"].includes(status);
+    // poll while backend/n8n is actively working on the file
+    return ["queued", "pending", "processing"].includes(status);
   }
 
   function syncImportStatusPolling(state) {
