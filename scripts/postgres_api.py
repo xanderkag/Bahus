@@ -176,6 +176,21 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             return self.respond_json({"status": "ok", "service": "bahus-postgres-api"})
         if route == "/api/system/logs":
             return self.handle_get_system_logs()
+        if route == "/api/debug/disk":
+            import os as _os
+            files = []
+            if UPLOADS_DIR.exists():
+                for f in sorted(UPLOADS_DIR.iterdir()):
+                    files.append({"name": f.name, "size": f.stat().st_size, "exists": f.exists()})
+            return self.respond_json({
+                "uploads_dir": str(UPLOADS_DIR),
+                "exists": UPLOADS_DIR.exists(),
+                "file_count": len(files),
+                "files": files[-10:],  # last 10
+                "n8n_webhook_url": self.config.n8n_webhook_url or "NOT SET",
+                "public_api_url": os.getenv("PUBLIC_API_URL", "NOT SET"),
+            })
+
         if route == "/api/bootstrap":
             return self.handle_bootstrap()
         if route == "/api/imports":
