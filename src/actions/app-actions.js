@@ -1554,7 +1554,7 @@ export function createActions(store, backend = null) {
         // Pick the currently-selected import's supplier, or the first available real supplier
         const existingImportSupplierId = state.entities.importsById[state.ui.selectedImportId]?.supplier_id;
         const firstSupplierId = Object.keys(state.entities.suppliersById)[0] || null;
-        const supplierId = state.ui.uploadDraft?.supplierId || existingImportSupplierId || firstSupplierId;
+        const supplierId = existingImportSupplierId || state.ui.uploadDraft?.supplierId || firstSupplierId;
 
         return {
           ...state,
@@ -1564,15 +1564,31 @@ export function createActions(store, backend = null) {
             uploadDraft: {
               supplierId,
               documentType: "price_list",
-              requestId: state.quote.meta.quoteNumber || "",
+              requestId: state.quote?.meta?.quoteNumber || "",
               files: [],
               attachments: [],
               managerNote: "",
+              importRef: null,
+            },
+          },
+          runtime: {
+            ...state.runtime,
+            resources: {
+              ...state.runtime?.resources,
+              imports: {
+                ...(state.runtime?.resources?.imports || {}),
+                status: "ready",
+                error: null,
+                completed: 0,
+                total: 0,
+                currentFilePercent: 0,
+              },
             },
           },
         };
       });
     },
+
     /** Scroll the overview page to the imports table at the top */
     scrollToImportsList() {
       const el = document.querySelector(".overview-files-panel");
@@ -1936,16 +1952,35 @@ export function createActions(store, backend = null) {
 
 
     closeModal() {
-      update((state) => ({
-        ...state,
-        ui: {
-          ...state.ui,
-          modal: null,
-          rowDetailEditMode: false,
-          selectedRowDetailId: state.ui.modal === "row-details" ? null : state.ui.selectedRowDetailId,
-        },
-      }));
+      update((state) => {
+        const isUploadModal = state.ui.modal === "upload-files";
+        return {
+          ...state,
+          ui: {
+            ...state.ui,
+            modal: null,
+            rowDetailEditMode: false,
+            selectedRowDetailId: state.ui.modal === "row-details" ? null : state.ui.selectedRowDetailId,
+          },
+          // Reset upload resource status so next open always shows the form
+          runtime: isUploadModal ? {
+            ...state.runtime,
+            resources: {
+              ...state.runtime?.resources,
+              imports: {
+                ...(state.runtime?.resources?.imports || {}),
+                status: "ready",
+                error: null,
+                completed: 0,
+                total: 0,
+                currentFilePercent: 0,
+              },
+            },
+          } : state.runtime,
+        };
+      });
     },
+
     toggleRowDetailEditMode() {
       update((state) => ({
         ...state,
