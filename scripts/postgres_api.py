@@ -1109,6 +1109,16 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         if not import_id:
             return self.respond_json({"error": "import_batch_id is required"}, status=HTTPStatus.BAD_REQUEST)
 
+        # Validate UUID format before hitting DB (prevents psycopg InvalidTextRepresentation)
+        try:
+            uuid.UUID(str(import_id))
+        except ValueError:
+            n8n_logger.warning(f"[N8N] WEBHOOK ← invalid import_id format (not UUID): {import_id!r}")
+            return self.respond_json(
+                {"error": "import_batch_id must be a valid UUID", "received": import_id},
+                status=HTTPStatus.BAD_REQUEST,
+            )
+
         correlation_id = payload.get("correlation_id", "-")
         rows_count = len(payload.get("rows") or [])
         issues_count = len(payload.get("issues") or [])
@@ -1123,6 +1133,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             batch_row = self.require_import(conn, import_id)
             if batch_row is None:
                 return self.respond_json({"error": "Import not found", "import_id": import_id}, status=HTTPStatus.NOT_FOUND)
+
 
             import_file_id = self.resolve_import_file_id(conn, import_id, payload.get("import_file_id"))
             status = payload.get("status", "parsed")
