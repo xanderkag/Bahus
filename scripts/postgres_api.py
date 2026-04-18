@@ -120,6 +120,11 @@ class AppConfig:
     default_user_email: str
 
 
+# --- PROTOTYPE DEFAULTS (override via env vars in production) ---
+_N8N_WEBHOOK_URL_DEFAULT = "https://n8n.chevich.com/webhook/bakhus-pdf-import"
+_PUBLIC_API_URL_DEFAULT = "https://bahus-production.up.railway.app"
+
+
 def build_config() -> AppConfig:
     db_dsn = os.getenv(
         "DATABASE_URL",
@@ -127,7 +132,7 @@ def build_config() -> AppConfig:
     )
     return AppConfig(
         db_dsn=db_dsn,
-        n8n_webhook_url=os.getenv("N8N_IMPORT_WEBHOOK_URL"),
+        n8n_webhook_url=os.getenv("N8N_IMPORT_WEBHOOK_URL", _N8N_WEBHOOK_URL_DEFAULT),
         public_file_base_url=os.getenv("PUBLIC_FILE_BASE_URL"),
         default_user_email=os.getenv("DEFAULT_MANAGER_EMAIL", "manager@bahus"),
     )
@@ -991,8 +996,8 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 "requested_pipeline": price_file["processing_pipeline"] or infer_pipeline(price_file["source_format"]),
                 "force": force,
                 "correlation_id": correlation_id,
-                "callbackSuccessUrl": f"{os.getenv('PUBLIC_API_URL', 'http://127.0.0.1:8078')}/api/webhooks/n8n/import-result",
-                "callbackFailedUrl": f"{os.getenv('PUBLIC_API_URL', 'http://127.0.0.1:8078')}/api/webhooks/n8n/import-failed",
+                "callbackSuccessUrl": f"{os.getenv('PUBLIC_API_URL', _PUBLIC_API_URL_DEFAULT)}/api/webhooks/n8n/import-result",
+                "callbackFailedUrl": f"{os.getenv('PUBLIC_API_URL', _PUBLIC_API_URL_DEFAULT)}/api/webhooks/n8n/import-failed",
                 "file_binary": {
                     "path": price_file["storage_path"],
                     "filename": price_file["file_name"],
