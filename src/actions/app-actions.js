@@ -83,6 +83,7 @@ function mapApiImportToEntity(item) {
     id: item.id,
     supplier_id: item.supplier?.id || item.supplier_id,
     created_by: item.created_by,
+    created_at: item.created_at || null,
     owner: item.owner,
     source: item.source,
     status: item.status || "uploaded",
@@ -1646,6 +1647,9 @@ export function createActions(store, backend = null) {
     },
 
     async createImportsFromUpload() {
+      // Guard against double-submission (e.g. rapid double-click)
+      if (store.getState().runtime?.resources?.imports?.status === "saving") return;
+
       const currentState = store.getState();
       const draft = currentState.ui.uploadDraft;
       const supplierId = draft.supplierId || Object.keys(currentState.entities.suppliersById)[0];
