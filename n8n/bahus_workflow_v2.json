@@ -1,0 +1,258 @@
+{
+  "name": "Bahus",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bakhus-pdf-import",
+        "options": {
+          "allowedOrigins": "https://bahus.vercel.app"
+        }
+      },
+      "id": "6f9471b3-9a70-4cbf-bb78-180b9f64420b",
+      "name": "Webhook: PDF Entry2",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        80,
+        420
+      ],
+      "webhookId": "bakhus-pdf-import"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.item.json;\n// multipart/form-data: fields land directly on json OR nested under body\nconst body = raw.body && typeof raw.body === 'object' ? raw.body : raw;\nconst file = $input.item.binary?.file || $input.item.binary?.data;\n\nconst importId  = body.import_batch_id || body.import_id || body.quote_id || `IMP_${Date.now()}`;\nconst jobId     = body.job_id     || `job_${Date.now()}`;\nconst source    = body.source     || 'import';\n\nconst successUrl = body.callbackSuccessUrl || body.callbacks?.success_url || null;\nconst failedUrl  = body.callbackFailedUrl  || body.callbacks?.failed_url  || null;\n\nif (!successUrl) {\n  // Log all available keys for debugging\n  throw new Error(\"Missing callbackSuccessUrl. Received keys: \" + Object.keys(body).join(', '));\n}\n\nlet mimeType = body.mime_type || 'unknown';\nif (file && file.mimeType) {\n  mimeType = file.mimeType;\n}\n\nreturn {\n  json: {\n    importId,\n    jobId,\n    filename: file?.fileName || body.source_file || 'document.pdf',\n    mime_type: mimeType,\n    callbackSuccessUrl: successUrl,\n    callbackFailedUrl:  failedUrl,\n    source,\n    source_format: 'pdf'\n  },\n  binary: $input.item.binary\n};\n"
+      },
+      "id": "b3ae0ada-4afe-4575-8759-b12abdbcb14d",
+      "name": "Metadata & Validation2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.mime_type }}",
+              "value2": "application/pdf"
+            }
+          ]
+        }
+      },
+      "id": "5d9c7c9e-98b5-4730-883e-b014bff17edb",
+      "name": "If: Is PDF?1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        520,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "file",
+        "options": {}
+      },
+      "id": "b23e7f43-7b52-4b1f-a771-77f71429c799",
+      "name": "Extract PDF1",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        740,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer sk-REDACTED-USE-N8N-CREDENTIAL"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ \"model\": \"gpt-4o-mini\", \"messages\": [ { \"role\": \"system\", \"content\": \"You are a master data extractor. Extract all items from the requested text into a JSON array of objects. Keys to extract for each object: 'name' (string) - Full name including vintage and grape if present; 'qty' (number); 'purchase_price' (number); 'volume_l' (number) - e.g. 0.75; 'country' (string); 'category' (string); 'note' (string) - article numbers, ratings, grapes, region. Respond ONLY with a valid JSON array, no markdown.\" }, { \"role\": \"user\", \"content\": $('Extract PDF1').first().json.text } ] }) }}",
+        "options": {}
+      },
+      "id": "2ef43ec3-10a9-4b1c-ab2f-2834b4fb2d57",
+      "name": "OpenAI: Parse2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        960,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const meta = $(\"Metadata & Validation2\").first().json;\nlet extractedRows = [];\n\ntry {\n  let rawText = $(\"OpenAI: Parse2\").first().json.choices[0].message.content;\n  if (rawText.includes(\"```json\")) {\n     rawText = rawText.replace(/```json/g, \"\").replace(/```/g, \"\").trim();\n  }\n  extractedRows = JSON.parse(rawText);\n} catch(e) {\n  extractedRows = [];\n}\n\nreturn {\n  json: {\n    import_batch_id: meta.importId,\n    job_id: meta.jobId,\n    status: \"parsed\",\n    rows: extractedRows,\n    callbackSuccessUrl: meta.callbackSuccessUrl\n  }\n};"
+      },
+      "id": "0e43af2a-6632-4bb3-8041-becb74fefb96",
+      "name": "Format Success1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1180,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.callbackSuccessUrl }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "5eda3ff4-2556-4472-bba5-c45acb97d526",
+      "name": "Callback Success1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1400,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  json: {\n    import_batch_id: $input.item.json.importId,\n    job_id: $input.item.json.jobId,\n    status: \"failed\",\n    error: \"Неподдерживаемый формат: \" + $input.item.json.mime_type + \". Загрузите PDF-файл.\",\n    callbackFailedUrl: $input.item.json.callbackFailedUrl\n  }\n};"
+      },
+      "id": "849b01be-8fdf-4792-910f-0c6f132064d5",
+      "name": "Format Error1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        740,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.callbackFailedUrl || 'http://localhost' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "fae8375a-9cf1-40c2-aa29-8a8274825883",
+      "name": "Callback Error1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        960,
+        600
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook: PDF Entry2": {
+      "main": [
+        [
+          {
+            "node": "Metadata & Validation2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Metadata & Validation2": {
+      "main": [
+        [
+          {
+            "node": "If: Is PDF?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If: Is PDF?1": {
+      "main": [
+        [
+          {
+            "node": "Extract PDF1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Error1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PDF1": {
+      "main": [
+        [
+          {
+            "node": "OpenAI: Parse2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI: Parse2": {
+      "main": [
+        [
+          {
+            "node": "Format Success1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Success1": {
+      "main": [
+        [
+          {
+            "node": "Callback Success1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Error1": {
+      "main": [
+        [
+          {
+            "node": "Callback Error1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "33e2642c-2310-43a9-9e5f-3bb912ea0733",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "51d051e70d2b12662cc651b60a17f803b90e11a48474f8b2af1538dc38b1641a"
+  },
+  "id": "3susCJ9GqBmEiNwq",
+  "tags": []
+}
