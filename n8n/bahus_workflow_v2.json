@@ -82,7 +82,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ \"model\": \"gpt-4o\", \"messages\": [ { \"role\": \"system\", \"content\": \"You are a master data extractor. Extract all items from the requested text into a JSON array of objects. Keys to extract for each object: 'name' (string) - Full name including vintage and grape if present; 'article' (string) - Manufacturer article number or code; 'qty' (number); 'purchase_price' (number); 'volume_l' (number) - e.g. 0.75; 'country' (string); 'category' (string); 'note' (string) - additional notes, ratings, grapes, region. Respond ONLY with a valid JSON array, no markdown.\" }, { \"role\": \"user\", \"content\": $('Extract PDF1').first().json.text } ] }) }}",
+        "jsonBody": "={{ JSON.stringify({ \"model\": \"gpt-4o\", \"response_format\": {\"type\": \"json_object\"}, \"messages\": [ { \"role\": \"system\", \"content\": \"You are a master data extractor. Extract all items from the requested text into a JSON object containing a single key 'rows' with an array of objects. Keys to extract for each object: 'name' (string) - Full name including vintage and grape if present; 'article' (string) - Manufacturer article number or code; 'qty' (number); 'purchase_price' (number); 'volume_l' (number) - e.g. 0.75; 'country' (string); 'category' (string); 'note' (string) - additional notes. Respond ONLY with a valid JSON object.\" }, { \"role\": \"user\", \"content\": $('Extract PDF1').first().json.text } ] }) }}",
         "options": {}
       },
       "id": "2ef43ec3-10a9-4b1c-ab2f-2834b4fb2d57",
@@ -96,7 +96,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const meta = $(\"Metadata & Validation2\").first().json;\nlet extractedRows = [];\n\ntry {\n  let rawText = $(\"OpenAI: Parse2\").first().json.choices[0].message.content;\n  if (rawText.includes(\"```json\")) {\n     rawText = rawText.replace(/```json/g, \"\").replace(/```/g, \"\").trim();\n  }\n  extractedRows = JSON.parse(rawText);\n} catch(e) {\n  extractedRows = [];\n}\n\nreturn {\n  json: {\n    import_batch_id: meta.importId,\n    job_id: meta.jobId,\n    status: \"parsed\",\n    rows: extractedRows,\n    callbackSuccessUrl: meta.callbackSuccessUrl\n  }\n};"
+        "jsCode": "const meta = $(\"Metadata & Validation2\").first().json;\nlet extractedRows = [];\nlet errorMessage = null;\n\ntry {\n  let rawText = $(\"OpenAI: Parse2\").first().json.choices[0].message.content;\n  if (rawText.includes(\"```json\")) {\n     rawText = rawText.replace(/```json/g, \"\").replace(/```/g, \"\").trim();\n  }\n  console.log('raw:', rawText);\n  const parsed = JSON.parse(rawText);\n  extractedRows = Array.isArray(parsed) ? parsed : (parsed.rows || []);\n} catch(e) {\n  errorMessage = \"Ошибка обработки ИИ: \" + e.message + \". Возможно, текст слишком большой или файл поврежден.\";\n}\n\nif (!errorMessage && (!extractedRows || extractedRows.length === 0)) {\n  errorMessage = \"Не удалось распознать товарные позиции. Убедитесь, что файл содержит список товаров, или что текст (кодировка) читаем, а не зашифрован как картинка.\";\n}\n\nif (errorMessage) {\n  return {\n    json: {\n      import_batch_id: meta.importId,\n      job_id: meta.jobId,\n      status: \"failed\",\n      error: errorMessage,\n      callbackFailedUrl: meta.callbackFailedUrl\n    }\n  };\n}\n\nreturn {\n  json: {\n    import_batch_id: meta.importId,\n    job_id: meta.jobId,\n    status: \"parsed\",\n    rows: extractedRows,\n    callbackSuccessUrl: meta.callbackSuccessUrl\n  }\n};"
       },
       "id": "0e43af2a-6632-4bb3-8041-becb74fefb96",
       "name": "Format Success1",
@@ -110,7 +110,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $json.callbackSuccessUrl }}",
+        "url": "={{ $json.status === 'failed' ? $json.callbackFailedUrl : $json.callbackSuccessUrl }}",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ $json }}",
