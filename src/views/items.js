@@ -239,17 +239,19 @@ export function renderItems(state) {
           </div>
         </div>
         <div class="table-wrap overview-table-wrap">
-          <div class="overview-table-toolbar" style="display: flex; gap: 12px; align-items: center;">
-            <div class="search-input-wrap" style="flex: 1; max-width: 320px;">
-              <input type="text" class="text-input" placeholder="Поиск по названию или коду" style="width: 100%; border-radius: 8px; font-size: 13px;" value="${escapeHtml(state.ui.productSearchQuery || '')}" data-input="searchProducts" />
-            </div>
-            <div class="toolbar-actions overview-table-actions" style="margin-left: auto;">
+          <div class="overview-table-toolbar" style="display: flex; gap: 12px; align-items: center; margin-bottom: 12px;">
+            <div class="toolbar-actions overview-table-actions">
+              <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn" data-action="openTableSettings" data-table="items" title="Настроить столбцы" aria-label="Настройки">⚙</button>
+              <div style="width: 1px; height: 16px; background: var(--border-color); margin: 0 4px;"></div>
               <span class="overview-selection-pill">Выбрано ${selectedRows.size}</span>
               <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn" data-action="selectAllVisibleRows" title="Выделить все строки текущего представления" aria-label="Выделить все">◎</button>
               <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn" data-action="clearSelectedRows" title="Снять текущее выделение" aria-label="Снять выделение">◌</button>
               <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn icon-action-good" data-action="markSelectedChecked" title="Отметить выделенные строки как проверенные" aria-label="Проверено">✓</button>
               <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn icon-action-bad" data-action="excludeSelectedRows" title="Исключить выделенные строки" aria-label="Исключить">×</button>
               <button class="ghost-btn compact-action-btn table-action-btn" data-action="addSelectionToQuote" title="Добавить выделенные строки в КП">В КП</button>
+            </div>
+            <div class="search-input-wrap" style="max-width: 320px; margin-left: auto;">
+              <input type="text" class="text-input" placeholder="Поиск по названию или коду" style="width: 100%; border-radius: 8px; font-size: 13px;" value="${escapeHtml(state.ui.productSearchQuery || '')}" data-input="searchProducts" />
             </div>
           </div>
           <table>
@@ -264,9 +266,6 @@ export function renderItems(state) {
                      return def.renderTh((label, id) => renderColumnHeader(label, id, state.ui.activeColumnFilter), (id) => renderColumnMenu(state, filterOptions, id));
                   })
                   .join("")}
-                <th>
-                   <button class="ghost-btn icon-action-btn table-icon-btn" data-action="openTableSettings" data-table="items" title="Настроить столбцы" aria-label="Настройки">⚙</button>
-                </th>
               </tr>
             </thead>
             <tbody>

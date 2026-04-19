@@ -454,14 +454,13 @@ function renderTableSettingsModal(state) {
         justify-content: center;
       }
     </style>
-    <div class="modal is-active">
-      <div class="modal-backdrop" data-action="closeModal"></div>
-      <div class="modal-content" style="max-width: 400px;">
-        <header class="modal-header">
-          <h2>Настройка колонок</h2>
-          <button class="ghost-btn icon-btn" data-action="closeModal">×</button>
-        </header>
-        <div class="modal-body">
+    <div class="modal-overlay">
+      <div class="app-dialog compact-dialog" style="max-width: 400px; display: flex; flex-direction: column;">
+        <div class="dialog-header text-between" style="display: flex; align-items: center; justify-content: space-between;">
+          <h3 style="margin: 0;">Настройка колонок</h3>
+          <button class="ghost-btn icon-action-btn" data-action="closeModal" aria-label="Закрыть">×</button>
+        </div>
+        <div class="dialog-body" style="padding: 0 16px;">
           <p style="color: var(--text-secondary); margin-bottom: 8px;">Выберите, какие колонки показывать и настройте их порядок.</p>
           <div class="column-settings-list">
             ${columns.map((col, index) => `
@@ -478,9 +477,9 @@ function renderTableSettingsModal(state) {
             `).join("")}
           </div>
         </div>
-        <footer class="modal-footer" style="justify-content: flex-end;">
+        <div class="toolbar-actions justify-end" style="padding: 16px; margin-top: 8px; border-top: 1px solid var(--border);">
           <button class="primary-btn" data-action="closeModal">Готово</button>
-        </footer>
+        </div>
       </div>
     </div>
   `;
