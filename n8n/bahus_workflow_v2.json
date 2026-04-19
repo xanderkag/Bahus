@@ -82,7 +82,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ \"model\": \"gpt-4o-mini\", \"messages\": [ { \"role\": \"system\", \"content\": \"You are a master data extractor. Extract all items from the requested text into a JSON array of objects. Keys to extract for each object: 'name' (string) - Full name including vintage and grape if present; 'qty' (number); 'purchase_price' (number); 'volume_l' (number) - e.g. 0.75; 'country' (string); 'category' (string); 'note' (string) - article numbers, ratings, grapes, region. Respond ONLY with a valid JSON array, no markdown.\" }, { \"role\": \"user\", \"content\": $('Extract PDF1').first().json.text } ] }) }}",
+        "jsonBody": "={{ JSON.stringify({ \"model\": \"gpt-4o\", \"messages\": [ { \"role\": \"system\", \"content\": \"You are a master data extractor. Extract all items from the requested text into a JSON array of objects. Keys to extract for each object: 'name' (string) - Full name including vintage and grape if present; 'qty' (number); 'purchase_price' (number); 'volume_l' (number) - e.g. 0.75; 'country' (string); 'category' (string); 'note' (string) - article numbers, ratings, grapes, region. Respond ONLY with a valid JSON array, no markdown.\" }, { \"role\": \"user\", \"content\": $('Extract PDF1').first().json.text } ] }) }}",
         "options": {}
       },
       "id": "2ef43ec3-10a9-4b1c-ab2f-2834b4fb2d57",
