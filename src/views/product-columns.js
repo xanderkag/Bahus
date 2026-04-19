@@ -121,7 +121,10 @@ export const PRODUCT_COLUMN_DEFS = {
   },
   "issues": {
     renderTh: (renderHeader, renderMenu) => `<th class="filterable-th">${renderHeader("Проблемы", "issues")}${renderMenu("issues")}</th>`,
-    renderTd: (product, importRecord, supplier, formatValue, state, issueSummary) => `<td><span class="pill pill-${issueSummary?.kind}">${issueSummary?.label}${issueSummary?.count ? \` · \${issueSummary?.count}\` : ""}</span></td>`
+    renderTd: (product, importRecord, supplier, formatValue, state, issueSummary) => {
+      const count = issueSummary?.count ? " \u00b7 " + issueSummary.count : "";
+      return `<td><span class="pill pill-${issueSummary?.kind}">${issueSummary?.label}${count}</span></td>`;
+    }
   },
   "review_status": {
     renderTh: (renderHeader, renderMenu) => `<th class="filterable-th">${renderHeader("Проверка", "review_status")}${renderMenu("review_status")}</th>`,
