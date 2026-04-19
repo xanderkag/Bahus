@@ -239,7 +239,7 @@ function renderImportsTable(state) {
       const issueCount = item.issue_ids.length;
       const isProcessing = processingStatuses.has(item.status);
       return `
-        <tr class="${selectedImportId === item.id ? "is-active" : ""}">
+        <tr class="${selectedImportId === item.id ? "is-active" : ""} clickable-row" data-action="selectImport" data-import-id="${item.id}" style="cursor:pointer">
           <td>${index + 1}</td>
           <td>
             <button class="row-link" data-action="selectImport" data-import-id="${item.id}">
