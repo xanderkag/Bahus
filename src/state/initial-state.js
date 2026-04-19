@@ -128,6 +128,7 @@ export function createInitialState(payload = {}, options = {}) {
       sidebarCollapsed: false,
       clientPickerOpen: false,
       clientPickerQuery: "",
+      productSearchQuery: "",
       scope: "my",
       role: "manager",
       overviewDensity: "compact",

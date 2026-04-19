@@ -1041,6 +1041,15 @@ export function createActions(store, backend = null) {
         },
       }));
     },
+    searchProducts: debounce((dataset, value) => {
+      update((state) => ({
+        ...state,
+        ui: {
+          ...state.ui,
+          productSearchQuery: value,
+        },
+      }));
+    }),
     setImportTextFilter: debounce(({ field }, value) => {
       update((state) => ({
         ...state,
@@ -1239,6 +1248,7 @@ export function createActions(store, backend = null) {
             review_status: [],
           },
           activeColumnFilter: null,
+          productSearchQuery: "",
         },
       }));
     },

@@ -262,8 +262,11 @@ export function renderItems(state) {
           </div>
         </div>
         <div class="table-wrap overview-table-wrap">
-          <div class="overview-table-toolbar">
-            <div class="toolbar-actions overview-table-actions">
+          <div class="overview-table-toolbar" style="display: flex; gap: 12px; align-items: center;">
+            <div class="search-input-wrap" style="flex: 1; max-width: 320px;">
+              <input type="text" class="text-input" placeholder="Поиск по названию или коду" style="width: 100%; border-radius: 8px; font-size: 13px;" value="${escapeHtml(state.ui.productSearchQuery || '')}" data-input="searchProducts" />
+            </div>
+            <div class="toolbar-actions overview-table-actions" style="margin-left: auto;">
               <span class="overview-selection-pill">Выбрано ${selectedRows.size}</span>
               <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn" data-action="selectAllVisibleRows" title="Выделить все строки текущего представления" aria-label="Выделить все">◎</button>
               <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn" data-action="clearSelectedRows" title="Снять текущее выделение" aria-label="Снять выделение">◌</button>

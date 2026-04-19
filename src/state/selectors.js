@@ -43,12 +43,21 @@ export function getVisibleProducts(state) {
   const selectedPromo = new Set(state.ui.filters.promo || []);
   const selectedIssues = new Set(state.ui.filters.issues || []);
   const selectedReview = new Set(state.ui.filters.review_status || []);
+  const productSearchQuery = normalizeText(state.ui.productSearchQuery || "");
 
   return filterBase
     .filter((product) => {
       if (product.excluded && state.ui.activeView !== "items") {
         return false;
       }
+      
+      const combinedSearchText = normalizeText(
+        `${product.raw_name || ""} ${product.normalized_name || ""} ${product.product_id || ""} ${product.temp_id || ""} ${product.ids?.internal_code || ""}`
+      );
+      if (productSearchQuery && !combinedSearchText.includes(productSearchQuery)) {
+        return false;
+      }
+
       if (
         nameQuery &&
         !normalizeText(`${product.raw_name || ""} ${product.normalized_name || ""}`).includes(nameQuery)
