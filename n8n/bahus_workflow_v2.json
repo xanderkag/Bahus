@@ -54,49 +54,7 @@
     },
     {
       "parameters": {
-        "operation": "pdf",
-        "binaryPropertyName": "file",
-        "options": {}
-      },
-      "id": "b23e7f43-7b52-4b1f-a771-77f71429c799",
-      "name": "Extract PDF1",
-      "type": "n8n-nodes-base.extractFromFile",
-      "typeVersion": 1,
-      "position": [
-        740,
-        420
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $env.OPENAI_API_KEY }}"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ \"model\": \"gpt-4o\", \"response_format\": {\"type\": \"json_object\"}, \"messages\": [ { \"role\": \"system\", \"content\": \"You are a master data extractor. Extract all items from the requested text into a JSON object containing a single key 'rows' with an array of objects. Keys to extract for each object: 'name' (string) - Full name including vintage and grape if present; 'article' (string) - Manufacturer article number or code; 'qty' (number); 'purchase_price' (number); 'volume_l' (number) - e.g. 0.75; 'country' (string); 'category' (string); 'note' (string) - additional notes. Respond ONLY with a valid JSON object.\" }, { \"role\": \"user\", \"content\": $('Extract PDF1').first().json.text } ] }) }}",
-        "options": {}
-      },
-      "id": "2ef43ec3-10a9-4b1c-ab2f-2834b4fb2d57",
-      "name": "OpenAI: Parse2",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [
-        960,
-        420
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const meta = $(\"Metadata & Validation2\").first().json;\nlet extractedRows = [];\nlet errorMessage = null;\n\ntry {\n  let rawText = $(\"OpenAI: Parse2\").first().json.choices[0].message.content;\n  if (rawText.includes(\"```json\")) {\n     rawText = rawText.replace(/```json/g, \"\").replace(/```/g, \"\").trim();\n  }\n  console.log('raw:', rawText);\n  const parsed = JSON.parse(rawText);\n  extractedRows = Array.isArray(parsed) ? parsed : (parsed.rows || []);\n} catch(e) {\n  errorMessage = \"Ошибка обработки ИИ: \" + e.message + \". Возможно, текст слишком большой или файл поврежден.\";\n}\n\nif (!errorMessage && (!extractedRows || extractedRows.length === 0)) {\n  errorMessage = \"Не удалось распознать товарные позиции. Убедитесь, что файл содержит список товаров, или что текст (кодировка) читаем, а не зашифрован как картинка.\";\n}\n\nif (errorMessage) {\n  return {\n    json: {\n      import_batch_id: meta.importId,\n      job_id: meta.jobId,\n      status: \"failed\",\n      error: errorMessage,\n      callbackFailedUrl: meta.callbackFailedUrl\n    }\n  };\n}\n\nreturn {\n  json: {\n    import_batch_id: meta.importId,\n    job_id: meta.jobId,\n    status: \"parsed\",\n    rows: extractedRows,\n    callbackSuccessUrl: meta.callbackSuccessUrl\n  }\n};"
+        "jsCode": "const meta = $(\"Metadata & Validation2\").first().json;\nlet extractedRows = [];\nlet errorMessage = null;\n\ntry {\n  let rawText = $(\"OpenAI Assistants API\").first().json.choices[0].message.content;\n  if (rawText.includes(\"```json\")) {\n     rawText = rawText.replace(/```json/g, \"\").replace(/```/g, \"\").trim();\n  }\n  console.log('raw:', rawText);\n  const parsed = JSON.parse(rawText);\n  extractedRows = Array.isArray(parsed) ? parsed : (parsed.rows || []);\n} catch(e) {\n  errorMessage = \"\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0431\u0440\u0430\u0431\u043e\u0442\u043a\u0438 \u0418\u0418: \" + e.message + \". \u0412\u043e\u0437\u043c\u043e\u0436\u043d\u043e, \u0442\u0435\u043a\u0441\u0442 \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u0431\u043e\u043b\u044c\u0448\u043e\u0439 \u0438\u043b\u0438 \u0444\u0430\u0439\u043b \u043f\u043e\u0432\u0440\u0435\u0436\u0434\u0435\u043d.\";\n}\n\nif (!errorMessage && (!extractedRows || extractedRows.length === 0)) {\n  errorMessage = \"\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0440\u0430\u0441\u043f\u043e\u0437\u043d\u0430\u0442\u044c \u0442\u043e\u0432\u0430\u0440\u043d\u044b\u0435 \u043f\u043e\u0437\u0438\u0446\u0438\u0438. \u0423\u0431\u0435\u0434\u0438\u0442\u0435\u0441\u044c, \u0447\u0442\u043e \u0444\u0430\u0439\u043b \u0441\u043e\u0434\u0435\u0440\u0436\u0438\u0442 \u0441\u043f\u0438\u0441\u043e\u043a \u0442\u043e\u0432\u0430\u0440\u043e\u0432, \u0438\u043b\u0438 \u0447\u0442\u043e \u0442\u0435\u043a\u0441\u0442 (\u043a\u043e\u0434\u0438\u0440\u043e\u0432\u043a\u0430) \u0447\u0438\u0442\u0430\u0435\u043c, \u0430 \u043d\u0435 \u0437\u0430\u0448\u0438\u0444\u0440\u043e\u0432\u0430\u043d \u043a\u0430\u043a \u043a\u0430\u0440\u0442\u0438\u043d\u043a\u0430.\";\n}\n\nif (errorMessage) {\n  return {\n    json: {\n      import_batch_id: meta.importId,\n      job_id: meta.jobId,\n      status: \"failed\",\n      error: errorMessage,\n      callbackFailedUrl: meta.callbackFailedUrl\n    }\n  };\n}\n\nreturn {\n  json: {\n    import_batch_id: meta.importId,\n    job_id: meta.jobId,\n    status: \"parsed\",\n    rows: extractedRows,\n    callbackSuccessUrl: meta.callbackSuccessUrl\n  }\n};"
       },
       "id": "0e43af2a-6632-4bb3-8041-becb74fefb96",
       "name": "Format Success1",
@@ -127,7 +85,7 @@
     },
     {
       "parameters": {
-        "jsCode": "return {\n  json: {\n    import_batch_id: $input.item.json.importId,\n    job_id: $input.item.json.jobId,\n    status: \"failed\",\n    error: \"Неподдерживаемый формат: \" + $input.item.json.mime_type + \". Загрузите PDF-файл.\",\n    callbackFailedUrl: $input.item.json.callbackFailedUrl\n  }\n};"
+        "jsCode": "return {\n  json: {\n    import_batch_id: $input.item.json.importId,\n    job_id: $input.item.json.jobId,\n    status: \"failed\",\n    error: \"\u041d\u0435\u043f\u043e\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u043c\u044b\u0439 \u0444\u043e\u0440\u043c\u0430\u0442: \" + $input.item.json.mime_type + \". \u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u0435 PDF-\u0444\u0430\u0439\u043b.\",\n    callbackFailedUrl: $input.item.json.callbackFailedUrl\n  }\n};"
       },
       "id": "849b01be-8fdf-4792-910f-0c6f132064d5",
       "name": "Format Error1",
@@ -154,6 +112,32 @@
       "position": [
         960,
         600
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst meta = .first().json;\nconst openaiKey = .OPENAI_API_KEY;\nif (!openaiKey) throw new Error(\"Missing OPENAI_API_KEY\");\n\nconst binaryData = await this.helpers.getBinaryDataBuffer(0, 'file');\nconst fileName = .item.binary.file.fileName || 'document.pdf';\n\nconst boundary = '----WebKitFormBoundary7MA4YWxkTrZu0gW';\nconst header = `--${boundary}\r\nContent-Disposition: form-data; name=\"purpose\"\r\n\r\nassistants\r\n--${boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"${fileName}\"\r\nContent-Type: application/pdf\r\n\r\n`;\nconst footer = `\r\n--${boundary}--\r\n`;\n\nconst body = Buffer.concat([\n  Buffer.from(header, 'utf8'),\n  binaryData,\n  Buffer.from(footer, 'utf8')\n]);\n\nlet uploadRes;\ntry {\n  const result = await this.helpers.httpRequest({\n    method: 'POST',\n    url: 'https://api.openai.com/v1/files',\n    headers: {\n      'Authorization': `Bearer ${openaiKey}`,\n      'Content-Type': `multipart/form-data; boundary=${boundary}`\n    },\n    body: body,\n    encoding: null \n  });\n  uploadRes = typeof result === 'string' ? JSON.parse(result) : result;\n} catch(e) {\n  throw new Error(\"File upload failed: \" + (e.message || e));\n}\n\nconst fileId = uploadRes.id;\nlet assistantId = null;\n\ntry {\n  const prompt = `You are a master data extractor. Extract all items from the attached document into a JSON object. Ensure the format is exactly {\"rows\": [ { \"name\": \"...\", \"article\": \"...\", \"qty\": 1, \"purchase_price\": 100, \"volume_l\": 0.75, \"country\": \"...\", \"category\": \"...\", \"note\": \"...\" } ] }. Respond ONLY with a valid JSON object.`;\n  \n  const assistantResStr = await this.helpers.httpRequest({\n    method: 'POST',\n    url: 'https://api.openai.com/v1/assistants',\n    headers: {\n      'Authorization': `Bearer ${openaiKey}`,\n      'OpenAI-Beta': 'assistants=v2',\n      'Content-Type': 'application/json'\n    },\n    body: {\n      name: 'PDF Extractor Temp',\n      model: 'gpt-4o',\n      instructions: prompt,\n      tools: [{ type: \"file_search\" }],\n      tool_resources: { file_search: { vector_stores: [{ file_ids: [fileId] }] } }\n    }\n  });\n  const assistantRes = typeof assistantResStr === 'string' ? JSON.parse(assistantResStr) : assistantResStr;\n  assistantId = assistantRes.id;\n\n  const runResStr = await this.helpers.httpRequest({\n    method: 'POST',\n    url: 'https://api.openai.com/v1/threads/runs',\n    headers: {\n      'Authorization': `Bearer ${openaiKey}`,\n      'OpenAI-Beta': 'assistants=v2',\n      'Content-Type': 'application/json'\n    },\n    body: {\n      assistant_id: assistantId,\n      response_format: { type: \"json_object\" }\n    }\n  });\n  const runRes = typeof runResStr === 'string' ? JSON.parse(runResStr) : runResStr;\n\n  const threadId = runRes.thread_id;\n  let runId = runRes.id;\n\n  let status = runRes.status;\n  while (status === \"queued\" || status === \"in_progress\") {\n    await new Promise(r => setTimeout(r, 4000));\n    const pollResStr = await this.helpers.httpRequest({\n      method: 'GET',\n      url: `https://api.openai.com/v1/threads/${threadId}/runs/${runId}`,\n      headers: {\n        'Authorization': `Bearer ${openaiKey}`,\n        'OpenAI-Beta': 'assistants=v2'\n      }\n    });\n    const pollRes = typeof pollResStr === 'string' ? JSON.parse(pollResStr) : pollResStr;\n    status = pollRes.status;\n    if (status === \"failed\") throw new Error(`Run failed`);\n  }\n\n  const msgsResStr = await this.helpers.httpRequest({\n    method: 'GET',\n    url: `https://api.openai.com/v1/threads/${threadId}/messages`,\n    headers: {\n      'Authorization': `Bearer ${openaiKey}`,\n      'OpenAI-Beta': 'assistants=v2'\n    }\n  });\n  const msgsRes = typeof msgsResStr === 'string' ? JSON.parse(msgsResStr) : msgsResStr;\n  \n  await this.helpers.httpRequest({ method: 'DELETE', url: `https://api.openai.com/v1/assistants/${assistantId}`, headers: {'Authorization': `Bearer ${openaiKey}`, 'OpenAI-Beta': 'assistants=v2'} }).catch(()=>{});\n  await this.helpers.httpRequest({ method: 'DELETE', url: `https://api.openai.com/v1/files/${fileId}`, headers: {'Authorization': `Bearer ${openaiKey}`} }).catch(()=>{});\n\n  const contentBlock = msgsRes.data[0].content.find(c => c.type === 'text');\n  let rawText = contentBlock ? contentBlock.text.value : '{\"rows\":[]}';\n  \n  return { json: { choices: [ { message: { content: rawText } } ] } };\n\n} catch(e) {\n  if (assistantId) await this.helpers.httpRequest({ method: 'DELETE', url: `https://api.openai.com/v1/assistants/${assistantId}`, headers: {'Authorization': `Bearer ${openaiKey}`, 'OpenAI-Beta': 'assistants=v2'} }).catch(()=>{});\n  await this.helpers.httpRequest({ method: 'DELETE', url: `https://api.openai.com/v1/files/${fileId}`, headers: {'Authorization': `Bearer ${openaiKey}`} }).catch(()=>{});\n  throw e;\n}\n"
+      },
+      "id": "assistants-api-extraction-id",
+      "name": "OpenAI Assistants API",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const meta = $(\"Metadata & Validation2\").first().json;\nconst openaiKey = $env.OPENAI_API_KEY;\nif (!openaiKey) throw new Error(\"Missing OPENAI_API_KEY\");\n\nconst binaryData = await this.helpers.getBinaryDataBuffer(0, 'file');\nconst fileName = $input.item.binary.file.fileName || 'document.pdf';\n\nconst boundary = '----WebKitFormBoundary7MA4YWxkTrZu0gW';\nconst header = `--${boundary}\\r\\nContent-Disposition: form-data; name=\"purpose\"\\r\\n\\r\\nassistants\\r\\n--${boundary}\\r\\nContent-Disposition: form-data; name=\"file\"; filename=\"${fileName}\"\\r\\nContent-Type: application/pdf\\r\\n\\r\\n`;\nconst footer = `\\r\\n--${boundary}--\\r\\n`;\n\nconst body = Buffer.concat([\n  Buffer.from(header, 'utf8'),\n  binaryData,\n  Buffer.from(footer, 'utf8')\n]);\n\nlet uploadRes;\ntry {\n  const result = await this.helpers.httpRequest({\n    method: 'POST',\n    url: 'https://api.openai.com/v1/files',\n    headers: {\n      'Authorization': `Bearer ${openaiKey}`,\n      'Content-Type': `multipart/form-data; boundary=${boundary}`\n    },\n    body: body,\n    encoding: null \n  });\n  uploadRes = typeof result === 'string' ? JSON.parse(result) : result;\n} catch(e) {\n  throw new Error(\"File upload failed: \" + (e.message || e));\n}\n\nconst fileId = uploadRes.id;\nlet assistantId = null;\n\ntry {\n  const prompt = `You are a master data extractor. Extract all items from the attached document into a JSON object. Ensure the format is exactly {\"rows\": [ { \"name\": \"...\", \"article\": \"...\", \"qty\": 1, \"purchase_price\": 100, \"volume_l\": 0.75, \"country\": \"...\", \"category\": \"...\", \"note\": \"...\" } ] }. Respond ONLY with a valid JSON object.`;\n  \n  const assistantResStr = await this.helpers.httpRequest({\n    method: 'POST',\n    url: 'https://api.openai.com/v1/assistants',\n    headers: {\n      'Authorization': `Bearer ${openaiKey}`,\n      'OpenAI-Beta': 'assistants=v2',\n      'Content-Type': 'application/json'\n    },\n    body: {\n      name: 'PDF Extractor Temp',\n      model: 'gpt-4o',\n      instructions: prompt,\n      tools: [{ type: \"file_search\" }],\n      tool_resources: { file_search: { vector_stores: [{ file_ids: [fileId] }] } }\n    }\n  });\n  const assistantRes = typeof assistantResStr === 'string' ? JSON.parse(assistantResStr) : assistantResStr;\n  assistantId = assistantRes.id;\n\n  const runResStr = await this.helpers.httpRequest({\n    method: 'POST',\n    url: 'https://api.openai.com/v1/threads/runs',\n    headers: {\n      'Authorization': `Bearer ${openaiKey}`,\n      'OpenAI-Beta': 'assistants=v2',\n      'Content-Type': 'application/json'\n    },\n    body: {\n      assistant_id: assistantId,\n      response_format: { type: \"json_object\" }\n    }\n  });\n  const runRes = typeof runResStr === 'string' ? JSON.parse(runResStr) : runResStr;\n\n  const threadId = runRes.thread_id;\n  let runId = runRes.id;\n\n  let status = runRes.status;\n  while (status === \"queued\" || status === \"in_progress\") {\n    await new Promise(r => setTimeout(r, 4000));\n    const pollResStr = await this.helpers.httpRequest({\n      method: 'GET',\n      url: `https://api.openai.com/v1/threads/${threadId}/runs/${runId}`,\n      headers: {\n        'Authorization': `Bearer ${openaiKey}`,\n        'OpenAI-Beta': 'assistants=v2'\n      }\n    });\n    const pollRes = typeof pollResStr === 'string' ? JSON.parse(pollResStr) : pollResStr;\n    status = pollRes.status;\n    if (status === \"failed\") throw new Error(`Run failed`);\n  }\n\n  const msgsResStr = await this.helpers.httpRequest({\n    method: 'GET',\n    url: `https://api.openai.com/v1/threads/${threadId}/messages`,\n    headers: {\n      'Authorization': `Bearer ${openaiKey}`,\n      'OpenAI-Beta': 'assistants=v2'\n    }\n  });\n  const msgsRes = typeof msgsResStr === 'string' ? JSON.parse(msgsResStr) : msgsResStr;\n  \n  await this.helpers.httpRequest({ method: 'DELETE', url: `https://api.openai.com/v1/assistants/${assistantId}`, headers: {'Authorization': `Bearer ${openaiKey}`, 'OpenAI-Beta': 'assistants=v2'} }).catch(()=>{});\n  await this.helpers.httpRequest({ method: 'DELETE', url: `https://api.openai.com/v1/files/${fileId}`, headers: {'Authorization': `Bearer ${openaiKey}`} }).catch(()=>{});\n\n  const contentBlock = msgsRes.data[0].content.find(c => c.type === 'text');\n  let rawText = contentBlock ? contentBlock.text.value : '{\"rows\":[]}';\n  \n  return { json: { choices: [ { message: { content: rawText } } ] } };\n\n} catch(e) {\n  if (assistantId) await this.helpers.httpRequest({ method: 'DELETE', url: `https://api.openai.com/v1/assistants/${assistantId}`, headers: {'Authorization': `Bearer ${openaiKey}`, 'OpenAI-Beta': 'assistants=v2'} }).catch(()=>{});\n  await this.helpers.httpRequest({ method: 'DELETE', url: `https://api.openai.com/v1/files/${fileId}`, headers: {'Authorization': `Bearer ${openaiKey}`} }).catch(()=>{});\n  throw e;\n}"
+      },
+      "id": "assistants-api-extraction-id",
+      "name": "OpenAI Assistants API",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        420
       ]
     }
   ],
@@ -185,7 +169,7 @@
       "main": [
         [
           {
-            "node": "Extract PDF1",
+            "node": "OpenAI Assistants API",
             "type": "main",
             "index": 0
           }
@@ -193,28 +177,6 @@
         [
           {
             "node": "Format Error1",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Extract PDF1": {
-      "main": [
-        [
-          {
-            "node": "OpenAI: Parse2",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "OpenAI: Parse2": {
-      "main": [
-        [
-          {
-            "node": "Format Success1",
             "type": "main",
             "index": 0
           }
@@ -237,6 +199,17 @@
         [
           {
             "node": "Callback Error1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Assistants API": {
+      "main": [
+        [
+          {
+            "node": "Format Success1",
             "type": "main",
             "index": 0
           }
