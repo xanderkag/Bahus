@@ -21,7 +21,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const raw = $input.item.json;\n// multipart/form-data: fields land directly on json OR nested under body\nconst body = raw.body && typeof raw.body === 'object' ? raw.body : raw;\nconst file = $input.item.binary?.file || $input.item.binary?.data;\n\nconst importId  = body.import_batch_id || body.import_id || body.quote_id || `IMP_${Date.now()}`;\nconst jobId     = body.job_id     || `job_${Date.now()}`;\nconst source    = body.source     || 'import';\n\nconst successUrl = body.callbackSuccessUrl || body.callbacks?.success_url || null;\nconst failedUrl  = body.callbackFailedUrl  || body.callbacks?.failed_url  || null;\n\nif (!successUrl) {\n  // Log all available keys for debugging\n  throw new Error(\"Missing callbackSuccessUrl. Received keys: \" + Object.keys(body).join(', '));\n}\n\nlet mimeType = body.mime_type || 'unknown';\nif (file && file.mimeType) {\n  mimeType = file.mimeType;\n}\n\nreturn {\n  json: {\n    importId,\n    jobId,\n    filename: file?.fileName || body.source_file || 'document.pdf',\n    mime_type: mimeType,\n    callbackSuccessUrl: successUrl,\n    callbackFailedUrl:  failedUrl,\n    source,\n    source_format: 'pdf'\n  },\n  binary: $input.item.binary\n};\n"
+        "jsCode": "const body = $input.item.json.body || $input.item.json || {};\nconst file = $input.item.binary?.file || $input.item.binary?.data;\nconst source = body.source || 'import';\nconst importId = body.import_batch_id || body.import_id || body.quote_id || `IMP_${Date.now()}`;\nconst jobId = body.job_id || `job_${Date.now()}`;\n\nconst successUrl = body.callbackSuccessUrl || body.callbacks?.success_url;\nconst failedUrl = body.callbackFailedUrl || body.callbacks?.failed_url;\n\nif (!successUrl) {\n  throw new Error(\"Missing callbackSuccessUrl in webhook payload!\");\n}\n\nlet mimeType = 'unknown';\nif (file && file.mimeType) {\n  mimeType = file.mimeType;\n}\n\nreturn {\n  json: {\n    importId,\n    jobId,\n    filename: file?.fileName || 'document.pdf',\n    mime_type: mimeType,\n    callbackSuccessUrl: successUrl,\n    callbackFailedUrl: failedUrl,\n    source,\n    source_format: 'pdf'\n  },\n  binary: $input.item.binary\n};"
       },
       "id": "b3ae0ada-4afe-4575-8759-b12abdbcb14d",
       "name": "Metadata & Validation2",
@@ -76,7 +76,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "=Bearer sk-REDACTED-USE-N8N-CREDENTIAL"
+              "value": "=Bearer {{ $env.OPENAI_API_KEY }}"
             }
           ]
         },

@@ -131,9 +131,15 @@ export function createActions(store, backend = null) {
 
         items.forEach((item) => {
           const mapped = mapApiImportToEntity(item);
+          const existing = importsById[mapped.id] || {};
           importsById[mapped.id] = {
-            ...(importsById[mapped.id] || {}),
+            ...existing,
             ...mapped,
+            // /api/imports doesn't return products in loadable format.
+            // Preserve product_ids and issue_ids already loaded by loadProductsResource
+            // to prevent a race condition where this wipes freshly-fetched products.
+            product_ids: existing.product_ids?.length > 0 ? existing.product_ids : mapped.product_ids,
+            issue_ids: existing.issue_ids?.length > 0 ? existing.issue_ids : mapped.issue_ids,
           };
           if (item.supplier?.id) {
             suppliersById[item.supplier.id] = {
@@ -235,13 +241,23 @@ export function createActions(store, backend = null) {
           nextImports[importId] = { ...nextImports[importId], product_ids: productIds };
         }
 
+        // Also update productOrder so "items" view shows refreshed products.
+        // Remove stale products for this import, then append current ones.
+        const productOrder = [
+          ...state.entities.productOrder.filter((id) => {
+            const p = nextProducts[id];
+            return p && p.import_id !== importId;
+          }),
+          ...productIds,
+        ];
+
         return {
           ...state,
           entities: {
             ...state.entities,
             productsById: nextProducts,
             importsById: nextImports,
-            productOrder: Array.from(new Set([...state.entities.productOrder, ...productIds])),
+            productOrder,
           },
           runtime: {
             ...state.runtime,
