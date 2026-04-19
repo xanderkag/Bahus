@@ -465,6 +465,13 @@ function renderProductsTable(state) {
           </td>
           <td>${escapeHtml(formatValue(product.article))}</td>
           <td>${escapeHtml(formatValue(product.product_id || product.temp_id))}</td>
+          <td>
+            <div class="table-title">${escapeHtml(formatValue(currentImport?.supplier?.name))}</div>
+          </td>
+          <td>
+            <div class="table-title">с ${escapeHtml(formatValue(currentImport?.meta?.import_date))}</div>
+            <div class="table-subtitle">${escapeHtml(formatValue(currentImport?.meta?.period))}</div>
+          </td>
           <td>${escapeHtml(formatValue(product.country))}</td>
           <td>${escapeHtml(formatValue(product.category))}</td>
           <td>${formatNumber(product.volume_l)}</td>
@@ -1026,6 +1033,8 @@ export function renderOverview(state) {
                 <th class="filterable-th">${renderColumnHeader("Наименование", "name", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "name")}</th>
                 <th>Артикул</th>
                 <th class="filterable-th">${renderColumnHeader("Код", "code", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "code")}</th>
+                <th>Поставщик</th>
+                <th>Актуальность</th>
                 <th class="filterable-th">${renderColumnHeader("Страна", "country", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "country")}</th>
                 <th class="filterable-th">${renderColumnHeader("Категория", "category", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "category")}</th>
                 <th class="filterable-th">${renderColumnHeader("Объём", "volume_l", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "volume_l")}</th>

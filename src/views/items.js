@@ -285,6 +285,7 @@ export function renderItems(state) {
                 <th>Артикул</th>
                 <th class="filterable-th">${renderColumnHeader("Код", "code", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "code")}</th>
                 <th>Поставщик</th>
+                <th>Актуальность</th>
                 <th class="filterable-th">${renderColumnHeader("Страна", "country", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "country")}</th>
                 <th class="filterable-th">${renderColumnHeader("Категория", "category", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "category")}</th>
                 <th>Тип</th>
@@ -327,6 +328,10 @@ export function renderItems(state) {
                       <td>${escapeHtml(formatValue(product.article))}</td>
                       <td>${escapeHtml(formatValue(product.product_id || product.temp_id))}</td>
                       <td>${escapeHtml(formatValue(supplier?.name))}</td>
+                      <td>
+                        <div class="table-title">с ${escapeHtml(formatValue(importRecord?.meta?.import_date))}</div>
+                        <div class="table-subtitle">${escapeHtml(formatValue(importRecord?.meta?.period))}</div>
+                      </td>
                       <td>${escapeHtml(formatValue(product.country))}</td>
                       <td>${escapeHtml(formatValue(product.category))}</td>
                       <td>${escapeHtml(formatDocumentType(importRecord?.meta?.document_type))}</td>
