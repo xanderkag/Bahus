@@ -172,7 +172,12 @@ export function renderItems(state) {
     if (selectedPromo.size && !selectedPromo.has(String(Boolean(product.promo)))) return false;
     if (selectedCountries.size && !selectedCountries.has(product.country)) return false;
     if (selectedCategories.size && !selectedCategories.has(product.category)) return false;
-    if (selectedReview.size && !selectedReview.has(product.review_status)) return false;
+    
+    if (selectedReview.size === 0) {
+      if (product.review_status !== "checked") return false;
+    } else {
+      if (!selectedReview.has(product.review_status)) return false;
+    }
 
     const issues = getIssuesForProduct(state, product.id);
     const hasErrors = issues.some((issue) => issue.severity === "error");
@@ -246,7 +251,7 @@ export function renderItems(state) {
               <span class="overview-selection-pill">Выбрано ${selectedRows.size}</span>
               <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn" data-action="selectAllVisibleRows" title="Выделить все строки текущего представления" aria-label="Выделить все">◎</button>
               <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn" data-action="clearSelectedRows" title="Снять текущее выделение" aria-label="Снять выделение">◌</button>
-              <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn icon-action-good" data-action="markSelectedChecked" title="Отметить выделенные строки как проверенные" aria-label="Проверено">✓</button>
+              <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn icon-action-good" data-action="promptMarkSelectedChecked" title="Отметить выделенные строки как проверенные" aria-label="Проверено">✓</button>
               <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn icon-action-bad" data-action="excludeSelectedRows" title="Исключить выделенные строки" aria-label="Исключить">×</button>
               <button class="ghost-btn compact-action-btn table-action-btn" data-action="addSelectionToQuote" title="Добавить выделенные строки в КП">В КП</button>
             </div>

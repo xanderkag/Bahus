@@ -91,11 +91,26 @@ async function main() {
   };
   try {
     const storedSettings = JSON.parse(localStorage.getItem("bahus_settings") || "{}");
+    
+    const mergeTableColumns = (defaultCols, storedCols) => {
+      if (!storedCols || !Array.isArray(storedCols)) return defaultCols;
+      const storedMap = new Map(storedCols.map(c => [c.id, c]));
+      const merged = [];
+      storedCols.forEach(sc => {
+        const dc = defaultCols.find(d => d.id === sc.id);
+        if (dc) merged.push({ ...dc, visible: 'visible' in sc ? sc.visible : dc.visible });
+      });
+      defaultCols.forEach(dc => {
+        if (!storedMap.has(dc.id)) merged.push(dc);
+      });
+      return merged;
+    };
+
     if (storedSettings.itemsTableColumns) {
-      initialState.ui.itemsTableColumns = storedSettings.itemsTableColumns;
+      initialState.ui.itemsTableColumns = mergeTableColumns(initialState.ui.itemsTableColumns, storedSettings.itemsTableColumns);
     }
     if (storedSettings.overviewTableColumns) {
-      initialState.ui.overviewTableColumns = storedSettings.overviewTableColumns;
+      initialState.ui.overviewTableColumns = mergeTableColumns(initialState.ui.overviewTableColumns, storedSettings.overviewTableColumns);
     }
     initialState.settings = {
       ...initialState.settings,

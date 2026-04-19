@@ -2019,6 +2019,14 @@ export function createActions(store, backend = null) {
         ui: { ...state.ui, selectedRowDetailId: productId, modal: "row-details", rowDetailEditMode: false },
       }));
     },
+    promptMarkSelectedChecked() {
+      const selected = getSelectedProducts(store.getState());
+      if (selected.length === 0) return;
+      update((state) => ({
+        ...state,
+        ui: { ...state.ui, modal: "confirmMarkChecked" },
+      }));
+    },
     async markSelectedChecked() {
       const selected = getSelectedProducts(store.getState());
       update((state) => {
@@ -2026,7 +2034,11 @@ export function createActions(store, backend = null) {
         selected.forEach((product) => {
           nextProducts[product.id] = { ...product, review_status: "checked" };
         });
-        return { ...state, entities: { ...state.entities, productsById: nextProducts } };
+        return { 
+          ...state, 
+          entities: { ...state.entities, productsById: nextProducts },
+          ui: { ...state.ui, modal: null }
+        };
       });
       if (backend && selected.length) {
         try {

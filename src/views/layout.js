@@ -555,6 +555,27 @@ export function renderLayout(state) {
       ${renderExportModal(state)}
       ${renderConfirmDeleteImportModal(state)}
       ${renderTableSettingsModal(state)}
+      ${renderConfirmMarkCheckedModal(state)}
+    </div>
+  `;
+}
+
+function renderConfirmMarkCheckedModal(state) {
+  if (state.ui.modal !== "confirmMarkChecked") return "";
+  return `
+    <div class="modal-overlay">
+      <div class="app-dialog compact-dialog">
+        <div class="dialog-header">
+          <h3>Подтверждение</h3>
+        </div>
+        <div class="dialog-body" style="padding-bottom: 24px; color: var(--text-secondary); line-height: 1.5;">
+          Перенести проверенные строки в общий список позиций? После подтверждения эти строки будут отмечены как проверенные и попадут в общую базу проверенных позиций.
+        </div>
+        <div class="toolbar-actions justify-end">
+          <button class="ghost-btn" data-action="closeModal">Отмена</button>
+          <button class="primary-btn" data-action="markSelectedChecked">Перенести</button>
+        </div>
+      </div>
     </div>
   `;
 }

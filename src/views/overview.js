@@ -991,7 +991,7 @@ export function renderOverview(state) {
               <span class="overview-selection-pill">Выбрано ${selectedCount}</span>
               <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn" data-action="selectAllVisibleRows" title="Выделить все строки после текущей фильтрации" aria-label="Выделить все">◎</button>
               <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn" data-action="clearSelectedRows" title="Снять текущее выделение" aria-label="Снять выделение">◌</button>
-              <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn icon-action-good" data-action="markSelectedChecked" title="Отметить выделенные строки как проверенные" aria-label="Проверено">✓</button>
+              <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn icon-action-good" data-action="promptMarkSelectedChecked" title="Отметить выделенные строки как проверенные" aria-label="Проверено">✓</button>
               <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn icon-action-bad" data-action="excludeSelectedRows" title="Исключить выделенные строки из дальнейшей обработки" aria-label="Исключить">×</button>
               <button class="ghost-btn compact-action-btn table-action-btn" data-action="addSelectionToQuote" title="Добавить выделенные строки в состав КП">В КП</button>
               <button class="primary-btn compact-action-btn table-action-btn" data-action="buildQuote" title="Сформировать рабочий сценарий коммерческого предложения по выделенным строкам">Сформировать КП</button>
