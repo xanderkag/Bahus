@@ -222,7 +222,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
 
     def handle_debug_jobs(self) -> None:
         with self.db() as conn:
-            rows = conn.execute("SELECT id, result FROM job_run WHERE type = 'n8n_import_webhook' ORDER BY created_at DESC LIMIT 5").fetchall()
+            rows = conn.execute("SELECT id, result FROM job_run WHERE type = 'n8n_import_dispatch' AND result is not null ORDER BY created_at DESC LIMIT 5").fetchall()
         return self.respond_json({"jobs": [{"id": str(r["id"]), "result": r["result"]} for r in rows]})
 
 
