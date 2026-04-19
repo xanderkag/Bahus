@@ -512,6 +512,8 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
               ir.promo,
               ir.review_status,
               ir.excluded,
+              ir.raw_payload->>'article' as article,
+              ir.raw_payload->>'note' as note,
               count(iri.id) as issues_total
             from import_row ir
             left join import_row_issue iri on iri.import_row_id = ir.id
@@ -538,6 +540,8 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 "promo": row["promo"],
                 "review_status": row["review_status"],
                 "excluded": row["excluded"],
+                "article": row["article"],
+                "note": row["note"],
                 "issues_total": row["issues_total"],
                 "ids": {},
             }

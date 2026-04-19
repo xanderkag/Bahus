@@ -52,7 +52,7 @@ export function getVisibleProducts(state) {
       }
       
       const combinedSearchText = normalizeText(
-        `${product.raw_name || ""} ${product.normalized_name || ""} ${product.product_id || ""} ${product.temp_id || ""} ${product.ids?.internal_code || ""}`
+        `${product.raw_name || ""} ${product.normalized_name || ""} ${product.product_id || ""} ${product.temp_id || ""} ${product.ids?.internal_code || ""} ${product.article || ""}`
       );
       if (productSearchQuery && !combinedSearchText.includes(productSearchQuery)) {
         return false;
@@ -66,7 +66,7 @@ export function getVisibleProducts(state) {
       }
       if (
         codeQuery &&
-        !normalizeText(`${product.product_id || ""} ${product.temp_id || ""} ${product.ids?.internal_code || ""}`).includes(codeQuery)
+        !normalizeText(`${product.product_id || ""} ${product.temp_id || ""} ${product.ids?.internal_code || ""} ${product.article || ""}`).includes(codeQuery)
       ) {
         return false;
       }

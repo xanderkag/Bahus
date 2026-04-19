@@ -463,6 +463,7 @@ function renderProductsTable(state) {
             <div class="table-title">${escapeHtml(formatValue(product.raw_name))}</div>
             <div class="table-subtitle">${escapeHtml(formatValue(product.normalized_name))}</div>
           </td>
+          <td>${escapeHtml(formatValue(product.article))}</td>
           <td>${escapeHtml(formatValue(product.product_id || product.temp_id))}</td>
           <td>${escapeHtml(formatValue(product.country))}</td>
           <td>${escapeHtml(formatValue(product.category))}</td>
@@ -995,16 +996,11 @@ export function renderOverview(state) {
             <p>${visibleProducts.length} строк в текущем представлении.</p>
           </div>
           <div class="overview-summary-inline">
-            <span class="pill">Строк: ${stats.totalRows}</span>
             <span class="pill">Ошибки: ${stats.errors}</span>
-            <span class="pill">Предупреждения: ${stats.warnings}</span>
             <span class="pill">Проверено: ${stats.checked}</span>
-            <span class="pill">Исключено: ${stats.excluded}</span>
-            <span class="pill ${selectedCount ? "pill-accent" : ""}">Выбрано: ${selectedCount}</span>
             ${currentImport
               ? `<span class="status-pill ${getImportStatusClass(currentImport.status)}">ИИ: ${escapeHtml(formatImportStatus(currentImport.status))}</span>`
               : ""}
-            <button class="ghost-btn compact-action-btn table-action-btn" data-action="scrollToImportsList" title="Прокрутить вверх к списку файлов">Таблица файлов</button>
           </div>
         </div>
         <div class="table-wrap overview-table-wrap">
@@ -1019,9 +1015,6 @@ export function renderOverview(state) {
               <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn icon-action-good" data-action="markSelectedChecked" title="Отметить выделенные строки как проверенные" aria-label="Проверено">✓</button>
               <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn icon-action-bad" data-action="excludeSelectedRows" title="Исключить выделенные строки из дальнейшей обработки" aria-label="Исключить">×</button>
               <button class="ghost-btn compact-action-btn table-action-btn" data-action="addSelectionToQuote" title="Добавить выделенные строки в состав КП">В КП</button>
-              <button class="ghost-btn compact-action-btn table-action-btn" data-action="openIssuesModal" title="Открыть список ошибок и предупреждений по текущему файлу">Проблемы</button>
-              <button class="ghost-btn compact-action-btn table-action-btn" data-action="resetFilters" title="Сбросить все фильтры">Сбросить</button>
-              <button class="ghost-btn compact-action-btn table-action-btn" data-action="dispatchSelectedImport" ${!state.ui.selectedImportId ? "disabled" : ""} title="Запустить внешнюю ИИ-обработку текущего импорта">${currentImport?.status === 'pending' ? "ИИ-обработка..." : "Обработка ИИ"}</button>
               <button class="primary-btn compact-action-btn table-action-btn" data-action="buildQuote" title="Сформировать рабочий сценарий коммерческого предложения по выделенным строкам">Сформировать КП</button>
             </div>
           </div>
@@ -1031,6 +1024,7 @@ export function renderOverview(state) {
                 <th></th>
                 <th>Строка</th>
                 <th class="filterable-th">${renderColumnHeader("Наименование", "name", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "name")}</th>
+                <th>Артикул</th>
                 <th class="filterable-th">${renderColumnHeader("Код", "code", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "code")}</th>
                 <th class="filterable-th">${renderColumnHeader("Страна", "country", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "country")}</th>
                 <th class="filterable-th">${renderColumnHeader("Категория", "category", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "category")}</th>

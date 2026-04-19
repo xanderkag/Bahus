@@ -282,6 +282,7 @@ export function renderItems(state) {
                 <th>Импорт</th>
                 <th>Строка</th>
                 <th class="filterable-th">${renderColumnHeader("Наименование", "name", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "name")}</th>
+                <th>Артикул</th>
                 <th class="filterable-th">${renderColumnHeader("Код", "code", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "code")}</th>
                 <th>Поставщик</th>
                 <th class="filterable-th">${renderColumnHeader("Страна", "country", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "country")}</th>
@@ -323,6 +324,7 @@ export function renderItems(state) {
                         <div class="table-title">${escapeHtml(formatValue(product.raw_name))}</div>
                         <div class="table-subtitle">${escapeHtml(formatValue(product.normalized_name))}</div>
                       </td>
+                      <td>${escapeHtml(formatValue(product.article))}</td>
                       <td>${escapeHtml(formatValue(product.product_id || product.temp_id))}</td>
                       <td>${escapeHtml(formatValue(supplier?.name))}</td>
                       <td>${escapeHtml(formatValue(product.country))}</td>
