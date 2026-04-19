@@ -215,8 +215,16 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             return self.handle_list_quotes()
         if route.startswith("/api/quotes/") and len(route.split("/")) == 4:
             return self.handle_get_quote(route.split("/")[3])
+        if route == "/api/debug/jobs":
+            return self.handle_debug_jobs()
 
         return self.respond_json({"error": "Not found", "path": route}, status=HTTPStatus.NOT_FOUND)
+
+    def handle_debug_jobs(self) -> None:
+        with self.db() as conn:
+            rows = conn.execute("SELECT id, result FROM job_run WHERE type = 'n8n_import_webhook' ORDER BY created_at DESC LIMIT 5").fetchall()
+        return self.respond_json({"jobs": [{"id": str(r["id"]), "result": r["result"]} for r in rows]})
+
 
     def do_PUT(self) -> None:  # noqa: N802
         try:
