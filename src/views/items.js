@@ -11,24 +11,8 @@ import {
   formatPercent,
   formatValue,
 } from "../utils/format.js";
-
-function formatDocumentType(type) {
-  const labels = {
-    net_price: "Нетто-прайс",
-    promo: "Промо",
-    price_list: "Прайс-лист",
-  };
-  return labels[type] || formatValue(type);
-}
-
-function formatReviewStatus(status) {
-  const labels = {
-    pending: "Ждёт проверки",
-    checked: "Проверено",
-    excluded: "Исключено",
-  };
-  return labels[status] || formatValue(status);
-}
+} from "../utils/format.js";
+import { PRODUCT_COLUMN_DEFS } from "./product-columns.js";
 
 function renderColumnHeader(label, column, activeColumnFilter) {
   const isActive = activeColumnFilter === column;
@@ -279,23 +263,18 @@ export function renderItems(state) {
             <thead>
               <tr>
                 <th></th>
-                <th>Импорт</th>
-                <th>Строка</th>
-                <th class="filterable-th">${renderColumnHeader("Наименование", "name", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "name")}</th>
-                <th>Артикул</th>
-                <th class="filterable-th">${renderColumnHeader("Код", "code", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "code")}</th>
-                <th>Поставщик</th>
-                <th>Актуальность</th>
-                <th class="filterable-th">${renderColumnHeader("Страна", "country", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "country")}</th>
-                <th class="filterable-th">${renderColumnHeader("Категория", "category", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "category")}</th>
-                <th>Тип</th>
-                <th class="filterable-th">${renderColumnHeader("Объём", "volume_l", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "volume_l")}</th>
-                <th class="filterable-th">${renderColumnHeader("Закупка", "purchase_price", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "purchase_price")}</th>
-                <th class="filterable-th">${renderColumnHeader("RRC", "rrc_min", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "rrc_min")}</th>
-                <th class="filterable-th">${renderColumnHeader("Акция", "promo", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "promo")}</th>
-                <th class="filterable-th">${renderColumnHeader("Проблемы", "issues", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "issues")}</th>
-                <th class="filterable-th">${renderColumnHeader("Проверка", "review_status", state.ui.activeColumnFilter)}${renderColumnMenu(state, filterOptions, "review_status")}</th>
                 <th></th>
+                ${state.ui.itemsTableColumns
+                  .filter((col) => col.visible)
+                  .map((col) => {
+                     const def = PRODUCT_COLUMN_DEFS[col.id];
+                     if (!def) return '<th></th>';
+                     return def.renderTh((label, id) => renderColumnHeader(label, id, state.ui.activeColumnFilter), (id) => renderColumnMenu(state, filterOptions, id));
+                  })
+                  .join("")}
+                <th>
+                   <button class="ghost-btn icon-action-btn table-icon-btn" data-action="openTableSettings" data-table="items" title="Настроить столбцы" aria-label="Настройки">⚙</button>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -317,30 +296,13 @@ export function renderItems(state) {
                         />
                       </td>
                       <td>
-                        <div class="table-title">${escapeHtml(importRecord?.meta?.source_file || "—")}</div>
-                        <div class="table-subtitle">${escapeHtml(importRecord?.meta?.import_date || "—")}</div>
-                      </td>
-                      <td>${product.row_index}</td>
-                      <td>
-                        <div class="table-title">${escapeHtml(formatValue(product.raw_name))}</div>
-                        <div class="table-subtitle">${escapeHtml(formatValue(product.normalized_name))}</div>
-                      </td>
-                      <td>${escapeHtml(formatValue(product.article))}</td>
-                      <td>${escapeHtml(formatValue(product.product_id || product.temp_id))}</td>
-                      <td>${escapeHtml(formatValue(supplier?.name))}</td>
-                      <td>
-                        <div class="table-title">с ${escapeHtml(formatValue(importRecord?.meta?.import_date))}</div>
-                        <div class="table-subtitle">${escapeHtml(formatValue(importRecord?.meta?.period))}</div>
-                      </td>
-                      <td>${escapeHtml(formatValue(product.country))}</td>
-                      <td>${escapeHtml(formatValue(product.category))}</td>
-                      <td>${escapeHtml(formatDocumentType(importRecord?.meta?.document_type))}</td>
-                      <td>${formatNumber(product.volume_l)}</td>
-                      <td>${formatMoney(product.purchase_price, currency)}</td>
-                      <td>${formatMoney(product.rrc_min, currency)}</td>
-                      <td>${product.promo ? '<span class="pill pill-warn">Акция</span>' : '<span class="pill">Обычный</span>'}</td>
-                      <td><span class="pill pill-${issue.kind}">${issue.label}${issue.count ? ` · ${issue.count}` : ""}</span></td>
-                      <td><span class="pill">${escapeHtml(formatReviewStatus(product.review_status))}</span></td>
+                      ${state.ui.itemsTableColumns
+                        .filter((col) => col.visible)
+                        .map((col) => {
+                          const def = PRODUCT_COLUMN_DEFS[col.id];
+                          return def ? def.renderTd(product, importRecord, supplier, formatValue, state, issue) : '<td></td>';
+                        })
+                        .join("")}
                       <td>
                         <button class="ghost-btn table-row-btn" data-action="openRowDetails" data-product-id="${product.id}">
                           Детали

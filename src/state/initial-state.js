@@ -15,6 +15,45 @@ export const defaultQuoteTableColumns = {
   removeAction: 104,
 };
 
+export const defaultOverviewTableColumns = [
+  { id: "row_index", label: "Строка", visible: true },
+  { id: "name", label: "Наименование", visible: true },
+  { id: "article", label: "Артикул", visible: true },
+  { id: "code", label: "Код", visible: true },
+  { id: "supplier", label: "Поставщик", visible: true },
+  { id: "validity", label: "Актуальность", visible: true },
+  { id: "country", label: "Страна", visible: true },
+  { id: "category", label: "Категория", visible: true },
+  { id: "volume_l", label: "Объём", visible: true },
+  { id: "purchase_price", label: "Закупка", visible: true },
+  { id: "rrc_min", label: "РРЦ", visible: true },
+  { id: "client_price", label: "Цена клиенту", visible: true },
+  { id: "margin_rub", label: "Маржа", visible: true },
+  { id: "margin_pct", label: "Маржа %", visible: true },
+  { id: "promo", label: "Акция", visible: true },
+  { id: "issues", label: "Проблемы", visible: true },
+  { id: "review_status", label: "Проверка", visible: true },
+];
+
+export const defaultItemsTableColumns = [
+  { id: "import", label: "Импорт", visible: true },
+  { id: "row_index", label: "Строка", visible: true },
+  { id: "name", label: "Наименование", visible: true },
+  { id: "article", label: "Артикул", visible: true },
+  { id: "code", label: "Код", visible: true },
+  { id: "supplier", label: "Поставщик", visible: true },
+  { id: "validity", label: "Актуальность", visible: true },
+  { id: "country", label: "Страна", visible: true },
+  { id: "category", label: "Категория", visible: true },
+  { id: "document_type", label: "Тип", visible: true },
+  { id: "volume_l", label: "Объём", visible: true },
+  { id: "purchase_price", label: "Закупка", visible: true },
+  { id: "rrc_min", label: "РРЦ", visible: true },
+  { id: "promo", label: "Акция", visible: true },
+  { id: "issues", label: "Проблемы", visible: true },
+  { id: "review_status", label: "Проверка", visible: true },
+];
+
 export function createProductKey(importId, product) {
   return `${importId}:${product.product_id || product.temp_id || `row_${product.row_index}`}`;
 }
@@ -171,6 +210,8 @@ export function createInitialState(payload = {}, options = {}) {
         direction: "desc",
       },
       quoteTableColumns: { ...defaultQuoteTableColumns },
+      overviewTableColumns: [...defaultOverviewTableColumns.map(c => ({...c}))],
+      itemsTableColumns: [...defaultItemsTableColumns.map(c => ({...c}))],
       newQuoteDraft: {
         clientId: "",
         title: "",

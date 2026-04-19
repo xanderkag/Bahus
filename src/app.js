@@ -89,10 +89,25 @@ async function main() {
     ...initialState.ui,
     sidebarCollapsed: getStoredSidebarCollapsed(),
   };
-  initialState.settings = {
-    ...initialState.settings,
-    theme: getStoredTheme(),
-  };
+  try {
+    const storedSettings = JSON.parse(localStorage.getItem("bahus_settings") || "{}");
+    if (storedSettings.itemsTableColumns) {
+      initialState.ui.itemsTableColumns = storedSettings.itemsTableColumns;
+    }
+    if (storedSettings.overviewTableColumns) {
+      initialState.ui.overviewTableColumns = storedSettings.overviewTableColumns;
+    }
+    initialState.settings = {
+      ...initialState.settings,
+      ...storedSettings,
+      theme: getStoredTheme(),
+    };
+  } catch (e) {
+    initialState.settings = {
+      ...initialState.settings,
+      theme: getStoredTheme(),
+    };
+  }
   const store = createStore(initialState);
   const backend = createBackend(initialState.runtime.apiBaseUrl || config.apiBaseUrl);
   const actions = createActions(store, backend);

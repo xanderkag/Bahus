@@ -405,6 +405,87 @@ export function renderConfirmDeleteImportModal(state) {
   `;
 }
 
+function renderTableSettingsModal(state) {
+  if (state.ui.modal?.type !== "tableSettings") return "";
+  const tableType = state.ui.modal.tableType;
+  const colsKey = tableType === "items" ? "itemsTableColumns" : "overviewTableColumns";
+  const columns = state.ui[colsKey] || [];
+  
+  return `
+    <style>
+      .column-settings-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 400px;
+        overflow-y: auto;
+        padding-right: 8px;
+        margin-top: 16px;
+      }
+      .column-setting-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 12px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+      }
+      .column-setting-item .checkbox-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0;
+        cursor: pointer;
+        font-weight: 500;
+        user-select: none;
+      }
+      .column-setting-actions {
+        display: flex;
+        gap: 4px;
+      }
+      .column-setting-actions button {
+        padding: 4px;
+        min-width: 24px;
+        height: 24px;
+        line-height: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+    </style>
+    <div class="modal is-active">
+      <div class="modal-backdrop" data-action="closeModal"></div>
+      <div class="modal-content" style="max-width: 400px;">
+        <header class="modal-header">
+          <h2>Настройка колонок</h2>
+          <button class="ghost-btn icon-btn" data-action="closeModal">×</button>
+        </header>
+        <div class="modal-body">
+          <p style="color: var(--text-secondary); margin-bottom: 8px;">Выберите, какие колонки показывать и настройте их порядок.</p>
+          <div class="column-settings-list">
+            ${columns.map((col, index) => `
+              <div class="column-setting-item">
+                <label class="checkbox-label">
+                  <input type="checkbox" data-change="toggleTableColumnVisibility" data-column-id="${col.id}" data-table-type="${tableType}" ${col.visible ? "checked" : ""}>
+                  ${col.label || col.id}
+                </label>
+                <div class="column-setting-actions">
+                  <button class="ghost-btn icon-btn" data-action="moveTableColumn" data-column-id="${col.id}" data-table-type="${tableType}" data-direction="up" ${index === 0 ? "disabled" : ""} title="Вверх">↑</button>
+                  <button class="ghost-btn icon-btn" data-action="moveTableColumn" data-column-id="${col.id}" data-table-type="${tableType}" data-direction="down" ${index === columns.length - 1 ? "disabled" : ""} title="Вниз">↓</button>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+        <footer class="modal-footer" style="justify-content: flex-end;">
+          <button class="primary-btn" data-action="closeModal">Готово</button>
+        </footer>
+      </div>
+    </div>
+  `;
+}
+
 export function renderLayout(state) {
   const meta = pageMeta[state.ui.activeView];
   const isSidebarCollapsed = Boolean(state.ui.sidebarCollapsed);
@@ -474,6 +555,7 @@ export function renderLayout(state) {
       ${renderUploadFilesModal(state)}
       ${renderExportModal(state)}
       ${renderConfirmDeleteImportModal(state)}
+      ${renderTableSettingsModal(state)}
     </div>
   `;
 }

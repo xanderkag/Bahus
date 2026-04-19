@@ -2626,5 +2626,63 @@ export function createActions(store, backend = null) {
         console.error("Failed to trigger AI processing for import:", err);
       });
     },
+
+    openTableSettings(dataset, event) {
+      const tableType = dataset.table || "overview";
+      update((state) => ({
+        ...state,
+        ui: {
+          ...state.ui,
+          modal: { type: "tableSettings", tableType },
+        },
+      }));
+    },
+
+    toggleTableColumnVisibility(dataset, value, event) {
+      const columnId = dataset.columnId;
+      const tableType = dataset.tableType;
+      
+      update((state) => {
+        const key = tableType === "items" ? "itemsTableColumns" : "overviewTableColumns";
+        const newCols = state.ui[key].map(c => c.id === columnId ? { ...c, visible: value } : c);
+        const newSettings = { ...state.settings, [key]: newCols };
+        localStorage.setItem("bahus_settings", JSON.stringify(newSettings));
+        
+        return {
+          ...state,
+          ui: { ...state.ui, [key]: newCols },
+          settings: newSettings,
+        };
+      });
+    },
+
+    moveTableColumn(dataset, event) {
+      const columnId = dataset.columnId;
+      const tableType = dataset.tableType;
+      const direction = dataset.direction === "up" ? -1 : 1;
+      
+      update((state) => {
+        const key = tableType === "items" ? "itemsTableColumns" : "overviewTableColumns";
+        const currentCols = [...state.ui[key]];
+        const idx = currentCols.findIndex(c => c.id === columnId);
+        if (idx < 0) return state;
+        const newIdx = idx + direction;
+        if (newIdx < 0 || newIdx >= currentCols.length) return state;
+        
+        const temp = currentCols[idx];
+        currentCols[idx] = currentCols[newIdx];
+        currentCols[newIdx] = temp;
+        
+        const newSettings = { ...state.settings, [key]: currentCols };
+        localStorage.setItem("bahus_settings", JSON.stringify(newSettings));
+        
+        return {
+          ...state,
+          ui: { ...state.ui, [key]: currentCols },
+          settings: newSettings,
+        };
+      });
+    },
+
   };
 }
