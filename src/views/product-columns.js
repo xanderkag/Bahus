@@ -1,4 +1,4 @@
-import { escapeHtml, formatNumber, formatMoney, formatPercent } from "../utils/dom.js";
+import { escapeHtml, formatNumber, formatMoney, formatPercent } from "../utils/format.js";
 
 export function formatDocumentType(type) {
   const labels = {
