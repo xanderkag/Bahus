@@ -120,7 +120,12 @@ export function createActions(store, backend = null) {
 
   async function loadImportsResource() {
     if (!backend) return;
-    setResourceState("imports", { status: "loading", error: null });
+    const currentStatus = store.getState().runtime?.resources?.imports?.status;
+    const isUploading = currentStatus === "saving" || currentStatus === "done";
+    
+    if (!isUploading) {
+      setResourceState("imports", { status: "loading", error: null });
+    }
     try {
       const payload = await backend.loadImports();
       const items = payload.items || [];
@@ -172,9 +177,9 @@ export function createActions(store, backend = null) {
               ...state.runtime.resources,
               imports: {
                 ...state.runtime.resources.imports,
-                status: "ready",
+                status: (state.runtime.resources.imports?.status === "saving" || state.runtime.resources.imports?.status === "done") ? state.runtime.resources.imports.status : "ready",
                 items,
-                error: null,
+                error: (state.runtime.resources.imports?.status === "saving" || state.runtime.resources.imports?.status === "done") ? state.runtime.resources.imports.error : null,
               },
             },
           },
