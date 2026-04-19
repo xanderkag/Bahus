@@ -438,16 +438,6 @@ function renderProductsTable(state) {
   return rows
     .map((product) => {
       const issue = getRowIssueSummary(state, product.id);
-      const clientPrice =
-        typeof product.rrc_min === "number" ? product.rrc_min : product.purchase_price;
-      const marginRub =
-        typeof product.purchase_price === "number" && typeof product.rrc_min === "number"
-          ? product.rrc_min - product.purchase_price
-          : null;
-      const marginPct =
-        typeof marginRub === "number" && product.purchase_price
-          ? (marginRub / product.purchase_price) * 100
-          : null;
 
       return `
         <tr class="${selectedRows.has(product.id) ? "is-selected" : ""}">

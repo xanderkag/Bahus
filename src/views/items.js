@@ -4,14 +4,7 @@ import {
   getProductsByScope,
   getRowIssueSummary,
 } from "../state/selectors.js";
-import {
-  escapeHtml,
-  formatMoney,
-  formatNumber,
-  formatPercent,
-  formatValue,
-} from "../utils/format.js";
-} from "../utils/format.js";
+import { escapeHtml, formatValue } from "../utils/format.js";
 import { PRODUCT_COLUMN_DEFS } from "./product-columns.js";
 
 function renderColumnHeader(label, column, activeColumnFilter) {
@@ -263,7 +256,6 @@ export function renderItems(state) {
             <thead>
               <tr>
                 <th></th>
-                <th></th>
                 ${state.ui.itemsTableColumns
                   .filter((col) => col.visible)
                   .map((col) => {
@@ -283,7 +275,6 @@ export function renderItems(state) {
                   const importRecord = state.entities.importsById[product.import_id];
                   const supplier = state.entities.suppliersById[product.supplier_id];
                   const issue = getRowIssueSummary(state, product.id);
-                  const currency = importRecord?.meta?.currency || "RUB";
 
                   return `
                     <tr class="${selectedRows.has(product.id) ? "is-selected" : ""}">
@@ -295,7 +286,6 @@ export function renderItems(state) {
                           ${selectedRows.has(product.id) ? "checked" : ""}
                         />
                       </td>
-                      <td>
                       ${state.ui.itemsTableColumns
                         .filter((col) => col.visible)
                         .map((col) => {
