@@ -116,20 +116,6 @@
     },
     {
       "parameters": {
-        "jsCode": "const meta = $(\"Metadata & Validation2\").first().json;\nconst openaiKey = $(\"Inject API Key\").first().json.openaiKey;\nif (!openaiKey) throw new Error(\"Missing OPENAI_API_KEY\");\n\n// --- Binary access without this.helpers (Task Runner safe) ---\nconst binaryItem = $input.first().binary?.file;\nif (!binaryItem) throw new Error(\"No binary file in input\");\nconst fileName = binaryItem.fileName || 'document.pdf';\nconst fileBuffer = Buffer.from(binaryItem.data, 'base64');\n\n// --- Upload file to OpenAI via fetch + manual multipart ---\nconst boundary = '----BahusFormBoundary' + Date.now();\nconst header = Buffer.from(\n  `--${boundary}\\r\\nContent-Disposition: form-data; name=\"purpose\"\\r\\n\\r\\nassistants\\r\\n` +\n  `--${boundary}\\r\\nContent-Disposition: form-data; name=\"file\"; filename=\"${fileName}\"\\r\\nContent-Type: application/pdf\\r\\n\\r\\n`,\n  'utf8'\n);\nconst footer = Buffer.from(`\\r\\n--${boundary}--\\r\\n`, 'utf8');\nconst body = Buffer.concat([header, fileBuffer, footer]);\n\nconst uploadResp = await fetch('https://api.openai.com/v1/files', {\n  method: 'POST',\n  headers: {\n    'Authorization': `Bearer ${openaiKey}`,\n    'Content-Type': `multipart/form-data; boundary=${boundary}`\n  },\n  body: body\n});\nif (!uploadResp.ok) throw new Error(\"File upload failed: \" + await uploadResp.text());\nconst uploadRes = await uploadResp.json();\nconst fileId = uploadRes.id;\n\nlet assistantId = null;\n\ntry {\n  const prompt = `You are a master data extractor. Extract ALL product rows from this price list into strict JSON.\nFormat: {\"rows\": [{\"name\":\"...\",\"article\":\"...\",\"qty\":1,\"purchase_price\":100,\"volume_l\":0.75,\"country\":\"...\",\"category\":\"...\",\"note\":\"...\"}]}\nRules: respond ONLY with valid JSON, no markdown, no explanation. If you are unsure of a field, use null.`;\n\n  // Create assistant\n  const aResp = await fetch('https://api.openai.com/v1/assistants', {\n    method: 'POST',\n    headers: {\n      'Authorization': `Bearer ${openaiKey}`,\n      'OpenAI-Beta': 'assistants=v2',\n      'Content-Type': 'application/json'\n    },\n    body: JSON.stringify({\n      name: 'BahusExtractorTemp',\n      model: 'gpt-4o',\n      instructions: prompt,\n      tools: [{ type: \"file_search\" }],\n      tool_resources: { file_search: { vector_stores: [{ file_ids: [fileId] }] } }\n    })\n  });\n  if (!aResp.ok) throw new Error(\"Assistant create failed: \" + await aResp.text());\n  const assistantRes = await aResp.json();\n  assistantId = assistantRes.id;\n\n  // Create thread + run in one call\n  const runResp = await fetch('https://api.openai.com/v1/threads/runs', {\n    method: 'POST',\n    headers: {\n      'Authorization': `Bearer ${openaiKey}`,\n      'OpenAI-Beta': 'assistants=v2',\n      'Content-Type': 'application/json'\n    },\n    body: JSON.stringify({\n      assistant_id: assistantId,\n      thread: {\n        messages: [{ role: \"user\", content: \"Extract all product rows from the attached price list. Return ONLY JSON.\" }]\n      },\n      response_format: { type: \"json_object\" }\n    })\n  });\n  if (!runResp.ok) throw new Error(\"Run create failed: \" + await runResp.text());\n  const runRes = await runResp.json();\n  const threadId = runRes.thread_id;\n  const runId = runRes.id;\n\n  // Poll until done (max 90 attempts × 3s = 4.5 min)\n  let status = runRes.status;\n  let attempts = 0;\n  while ((status === \"queued\" || status === \"in_progress\") && attempts < 90) {\n    await new Promise(r => setTimeout(r, 3000));\n    attempts++;\n    const pollResp = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${runId}`, {\n      headers: {\n        'Authorization': `Bearer ${openaiKey}`,\n        'OpenAI-Beta': 'assistants=v2'\n      }\n    });\n    const pollRes = await pollResp.json();\n    status = pollRes.status;\n    if (status === \"failed\" || status === \"cancelled\" || status === \"expired\") {\n      throw new Error(`Run ended with status: ${status}. ${JSON.stringify(pollRes.last_error || {})}`);\n    }\n  }\n  if (status !== \"completed\") throw new Error(`Run timed out, last status: ${status}`);\n\n  // Get messages\n  const msgsResp = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {\n    headers: {\n      'Authorization': `Bearer ${openaiKey}`,\n      'OpenAI-Beta': 'assistants=v2'\n    }\n  });\n  const msgsRes = await msgsResp.json();\n\n  // Cleanup\n  fetch(`https://api.openai.com/v1/assistants/${assistantId}`, { method: 'DELETE', headers: {'Authorization': `Bearer ${openaiKey}`, 'OpenAI-Beta': 'assistants=v2'} }).catch(() => {});\n  fetch(`https://api.openai.com/v1/files/${fileId}`, { method: 'DELETE', headers: {'Authorization': `Bearer ${openaiKey}`} }).catch(() => {});\n\n  const contentBlock = msgsRes.data?.[0]?.content?.find(c => c.type === 'text');\n  const rawText = contentBlock ? contentBlock.text.value : '{\"rows\":[]}';\n\n  return { json: { choices: [{ message: { content: rawText } }] } };\n\n} catch(e) {\n  // Cleanup on error\n  if (assistantId) fetch(`https://api.openai.com/v1/assistants/${assistantId}`, { method: 'DELETE', headers: {'Authorization': `Bearer ${openaiKey}`, 'OpenAI-Beta': 'assistants=v2'} }).catch(() => {});\n  fetch(`https://api.openai.com/v1/files/${fileId}`, { method: 'DELETE', headers: {'Authorization': `Bearer ${openaiKey}`} }).catch(() => {});\n  throw e;\n}",
-        "mode": "runOnceForAllItems"
-      },
-      "id": "c2f63852-7820-451e-8ea9-ee7912be33ee",
-      "name": "OpenAI Assistants API",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        860,
-        420
-      ]
-    },
-    {
-      "parameters": {
         "assignments": {
           "assignments": [
             {
@@ -150,6 +136,59 @@
         680,
         420
       ]
+    },
+    {
+      "id": "007a205a-cc94-42bd-9a43-e67394fefa22",
+      "name": "Upload File to OpenAI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        860,
+        420
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/files",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Inject API Key').first().json.openaiKey }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "purpose",
+              "value": "assistants"
+            },
+            {
+              "name": "file",
+              "parameterType": "formBinaryData",
+              "inputDataFieldName": "file"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "fc247dcf-84c8-400b-b9f5-cce1bb46889f",
+      "name": "OpenAI Assistants API",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1060,
+        420
+      ],
+      "parameters": {
+        "jsCode": "const meta = $(\"Metadata & Validation2\").first().json;\nconst openaiKey = $(\"Inject API Key\").first().json.openaiKey;\nif (!openaiKey) throw new Error(\"Missing OPENAI_API_KEY\");\n\n// fileId comes from the HTTP Request node that uploaded the file\nconst uploadResult = $(\"Upload File to OpenAI\").first().json;\nconst fileId = uploadResult.id;\nif (!fileId) throw new Error(\"File upload response missing id: \" + JSON.stringify(uploadResult));\n\nconst prompt = `You are a master data extractor. Extract ALL product rows from this price list into strict JSON.\nFormat: {\"rows\": [{\"name\":\"...\",\"article\":\"...\",\"qty\":1,\"purchase_price\":100,\"volume_l\":0.75,\"country\":\"...\",\"category\":\"...\",\"note\":\"...\"}]}\nRules: respond ONLY with valid JSON, no markdown fences, no explanation. If a field is unknown use null.`;\n\nconst headers = {\n  \"Authorization\": `Bearer ${openaiKey}`,\n  \"OpenAI-Beta\": \"assistants=v2\",\n  \"Content-Type\": \"application/json\"\n};\n\n// 1. Create assistant\nconst aResp = await fetch(\"https://api.openai.com/v1/assistants\", {\n  method: \"POST\", headers,\n  body: JSON.stringify({\n    name: \"BahusExtractorTemp\",\n    model: \"gpt-4o\",\n    instructions: prompt,\n    tools: [{ type: \"file_search\" }],\n    tool_resources: { file_search: { vector_stores: [{ file_ids: [fileId] }] } }\n  })\n});\nif (!aResp.ok) throw new Error(\"Create assistant failed: \" + await aResp.text());\nconst assistantId = (await aResp.json()).id;\n\nlet threadId, runId;\ntry {\n  // 2. Create thread + run (one call)\n  const runResp = await fetch(\"https://api.openai.com/v1/threads/runs\", {\n    method: \"POST\", headers,\n    body: JSON.stringify({\n      assistant_id: assistantId,\n      thread: {\n        messages: [{ role: \"user\", content: \"Extract all product rows. Return ONLY JSON.\" }]\n      },\n      response_format: { type: \"json_object\" }\n    })\n  });\n  if (!runResp.ok) throw new Error(\"Create run failed: \" + await runResp.text());\n  const runRes = await runResp.json();\n  threadId = runRes.thread_id;\n  runId = runRes.id;\n\n  // 3. Poll until completed (max 90 × 3s = 4.5 min)\n  let status = runRes.status;\n  let attempts = 0;\n  while ((status === \"queued\" || status === \"in_progress\") && attempts < 90) {\n    await new Promise(r => setTimeout(r, 3000));\n    attempts++;\n    const p = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${runId}`, { headers });\n    const pj = await p.json();\n    status = pj.status;\n    if ([\"failed\",\"cancelled\",\"expired\"].includes(status)) {\n      throw new Error(`Run ${status}: ${JSON.stringify(pj.last_error || {})}`);\n    }\n  }\n  if (status !== \"completed\") throw new Error(`Run timed out after ${attempts} polls, status=${status}`);\n\n  // 4. Get messages\n  const msgResp = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, { headers });\n  const msgs = await msgResp.json();\n  const block = msgs.data?.[0]?.content?.find(c => c.type === \"text\");\n  const rawText = block ? block.text.value : '{\"rows\":[]}';\n\n  // 5. Cleanup (fire & forget)\n  fetch(`https://api.openai.com/v1/assistants/${assistantId}`, { method: \"DELETE\", headers }).catch(() => {});\n  fetch(`https://api.openai.com/v1/files/${fileId}`, { method: \"DELETE\", headers: { Authorization: `Bearer ${openaiKey}` } }).catch(() => {});\n\n  return { json: { choices: [{ message: { content: rawText } }] } };\n\n} catch(e) {\n  // Cleanup on error\n  if (assistantId) fetch(`https://api.openai.com/v1/assistants/${assistantId}`, { method: \"DELETE\", headers }).catch(() => {});\n  if (fileId) fetch(`https://api.openai.com/v1/files/${fileId}`, { method: \"DELETE\", headers: { Authorization: `Bearer ${openaiKey}` } }).catch(() => {});\n  throw e;\n}",
+        "mode": "runOnceForAllItems"
+      }
     }
   ],
   "pinData": {},
@@ -231,6 +270,17 @@
       "main": [
         [
           {
+            "node": "Upload File to OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload File to OpenAI": {
+      "main": [
+        [
+          {
             "node": "OpenAI Assistants API",
             "type": "main",
             "index": 0
@@ -243,7 +293,7 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "8628b1d3-dfeb-458e-8b83-5f095d33e0ff",
+  "versionId": "4735a795-0092-4673-93d2-424410b8c02a",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "51d051e70d2b12662cc651b60a17f803b90e11a48474f8b2af1538dc38b1641a"
