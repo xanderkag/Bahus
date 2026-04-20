@@ -615,7 +615,11 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             "created_by": batch_row["created_by_email"],
             "source": batch_row["source"],
             "owner": batch_row["owner_email"],
-            "status": batch_row["processing_status"] or batch_row["status"],
+            "status": (
+                "parsed"
+                if rows and (batch_row["processing_status"] or batch_row["status"]) not in ("parsed", "partial")
+                else (batch_row["processing_status"] or batch_row["status"])
+            ),
             "errors": [
                 {
                     "row_index": issue["row_index"],
@@ -779,9 +783,20 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             if batch_row is None:
                 return self.respond_json({"error": "Import not found", "import_id": import_id}, status=HTTPStatus.NOT_FOUND)
             files = self.load_import_files(conn, import_id)
+
+            # If rows exist in DB → treat as parsed regardless of stored status
+            # (handles race condition where callback was lost but data was written)
+            row_count = conn.execute(
+                "select count(*) as cnt from import_row where import_batch_id = %s",
+                (import_id,)
+            ).fetchone()["cnt"]
+            derived_status = batch_row["processing_status"] or batch_row["status"]
+            if row_count > 0 and derived_status not in ("parsed", "partial"):
+                derived_status = "parsed"
+
             status = {
                 "id": import_id,
-                "status": batch_row["processing_status"] or batch_row["status"],
+                "status": derived_status,
                 "processing_started_at": batch_row["processing_started_at"],
                 "processing_finished_at": batch_row["processing_finished_at"],
                 "last_webhook_at": batch_row["last_webhook_at"],
@@ -990,6 +1005,18 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             batch_row = self.require_import(conn, import_id)
             if batch_row is None:
                 raise ValueError("Import not found")
+
+            # Guard: don't re-dispatch if rows already exist (one-shot processing)
+            if not force:
+                existing_rows = conn.execute(
+                    "select count(*) as cnt from import_row where import_batch_id = %s",
+                    (import_id,)
+                ).fetchone()["cnt"]
+                if existing_rows > 0:
+                    n8n_logger.info(
+                        f"[N8N] SKIP import_id={import_id} — already has {existing_rows} rows, skipping dispatch"
+                    )
+                    return {"import_id": import_id, "skipped": True, "reason": "already_processed"}
 
             files = self.load_import_files(conn, import_id)
             price_file = next((item for item in files if item["file_kind"] == "price"), None)
