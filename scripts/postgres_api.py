@@ -2180,8 +2180,10 @@ def main() -> None:
         with psycopg.connect(PostgresApiHandler.config.db_dsn) as conn:
             conn.execute("ALTER TABLE import_file ADD COLUMN IF NOT EXISTS file_bytes BYTEA;")
             conn.execute("ALTER TABLE import_file ADD COLUMN IF NOT EXISTS cleanup_done BOOLEAN DEFAULT FALSE;")
+            conn.execute("ALTER TABLE import_batch ADD COLUMN IF NOT EXISTS meta JSONB;")
             conn.commit()
-            logger.info("Database schema check passed (file_bytes added).")
+            logger.info("Database schema check passed.")
+
     except Exception as e:
         logger.error(f"Failed to run schema migration: {e}")
 
