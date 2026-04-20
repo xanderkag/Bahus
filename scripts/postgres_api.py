@@ -1201,13 +1201,25 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             total_chars += len(text.strip())
 
         avg_chars = total_chars / max(len(doc), 1)
-        n8n_logger.info(f"[AI] PDF scan: pages={len(doc)} total_chars={total_chars} avg_chars/page={avg_chars:.0f}")
 
-        # Heuristic: if average chars per page > 50, it's a text PDF
-        if avg_chars > 50:
+        # Count price-like patterns (numbers ≥ 3 digits, typical for prices)
+        import re
+        full_text_raw = "\n".join(pages_text)
+        price_numbers = re.findall(r'\d[\d\s]{2,}', full_text_raw)
+        n8n_logger.info(
+            f"[AI] PDF scan: pages={len(doc)} total_chars={total_chars} "
+            f"avg_chars/page={avg_chars:.0f} price_patterns={len(price_numbers)}"
+        )
+
+        # Smart heuristic: need both enough text AND product-like data (prices/numbers)
+        has_rich_text = avg_chars > 200  # at least 200 chars/page average
+        has_price_data = len(price_numbers) > 5  # at least 5 price-like numbers
+
+        if has_rich_text and has_price_data:
             full_text = "\n\n--- PAGE BREAK ---\n\n".join(pages_text)
             doc.close()
             return ("text", full_text)
+
 
         # Scanned PDF — render pages as images
         n8n_logger.info(f"[AI] Scanned PDF detected, rendering {len(doc)} pages as images")
