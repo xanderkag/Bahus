@@ -262,22 +262,18 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             return self.handle_create_import()
         if route.startswith("/api/imports/") and route.endswith("/dispatch"):
             return self.handle_dispatch_import(route.split("/")[3])
-        if route == "/api/debug/logs":
+        if route == "/api/debug/test":
             try:
                 import os
-                files_found = os.listdir(UPLOADS_DIR) if UPLOADS_DIR.exists() else []
                 with self.db() as conn:
-                    rows = conn.execute("select id, original_name, storage_path, file_kind from import_file order by uploaded_at desc limit 2").fetchall()
+                    rows = conn.execute("select id, original_name, size_bytes, storage_path from import_file order by uploaded_at desc limit 2").fetchall()
                     db_files = [dict(r) for r in rows]
                 
-                log_content = ""
-                pf = PROJECT_ROOT / "n8n_dispatch.log"
-                if pf.exists():
-                    log_content = pf.read_text()[-2000:]
-                return self.respond_json({"uploads_dir": str(UPLOADS_DIR), "files": files_found, "db": db_files, "logs": log_content})
+                return self.respond_json({"db": db_files})
             except Exception as e:
                 import traceback
                 return self.respond_json({"error": str(e), "trace": traceback.format_exc()})
+
 
 
 
