@@ -262,7 +262,16 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             return self.handle_create_import()
         if route.startswith("/api/imports/") and route.endswith("/dispatch"):
             return self.handle_dispatch_import(route.split("/")[3])
+        if route == "/api/debug/test":
+            try:
+                import os
+                files_found = os.listdir(UPLOADS_DIR) if UPLOADS_DIR.exists() else []
+                return self.respond_json({"uploads_dir": str(UPLOADS_DIR), "files": files_found})
+            except Exception as e:
+                return self.respond_json({"error": str(e)})
+
         if route == "/api/webhooks/n8n/import-result":
+
             return self.handle_n8n_import_result()
         if route == "/api/webhooks/n8n/import-failed":
             return self.handle_n8n_import_failed()
