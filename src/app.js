@@ -220,7 +220,18 @@ async function main() {
   root.addEventListener("change", handlers.change);
   attachQuoteColumnResize(root, store, actions);
 
+  let _prevState = null;
+
   store.subscribe((state) => {
+    // CRITICAL: Do NOT re-render the full DOM while the upload-files modal is open.
+    // Any innerHTML rewrite destroys the live <input type="file"> element and loses the
+    // selected File objects from the OS picker. Only re-render after the modal closes.
+    if (state.ui.modal === "upload-files" && _prevState?.ui?.modal === "upload-files") {
+      _prevState = state;
+      syncImportStatusPolling(state);
+      return;
+    }
+    _prevState = state;
     render();
     syncImportStatusPolling(state);
   });
