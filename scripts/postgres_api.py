@@ -1221,22 +1221,10 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         assistants_header = {**json_header, "OpenAI-Beta": "assistants=v2"}
 
         prompt = (
-            "You are a professional data extraction specialist. Extract EVERY SINGLE product row "
-            "from this price list document. Do NOT stop early, do NOT skip rows, do NOT summarize. "
-            "Count all rows in the source document and make sure your output has the same count.\n"
-            'Output ONLY a valid JSON object: '
-            '{"rows": [{"name":"Whisky 12yo","article":"ART-001","purchase_price":1590,'
-            '"volume_l":0.7,"country":"Scotland","category":"Whiskey","note":null,"promo":false}]}\n'
-            "Field rules:\n"
-            "- name: full product name including brand and age/vintage\n"
-            "- article: SKU/article number if present, else null\n"
-            "- purchase_price: numeric price in RUB (the purchase/net price column), null if absent\n"
-            "- volume_l: volume in litres as decimal (750ml=0.75, 1L=1.0, 1.5L=1.5), null if absent\n"
-            "- country: country of origin, null if absent\n"
-            "- category: wine/whiskey/vodka/cognac/champagne/beer/other\n"
-            "- note: any special notes or promo text, null if absent\n"
-            "- promo: true if marked as promo/акция, false otherwise\n"
-            "CRITICAL: extract ALL rows without exception."
+            "You are a master data extractor. Extract ALL product rows from this price list.\n"
+            "Output ONLY a valid JSON object (no markdown, no fences):\n"
+            '{"rows": [{"name":"...","article":"...","qty":1,"purchase_price":100,"volume_l":0.75,"country":"...","category":"...","note":"..."}]}\n'
+            "If a field value is unknown use null."
         )
 
         # 1. Upload file for Assistants API (purpose=assistants)
@@ -1264,7 +1252,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 headers=assistants_header,
                 json={
                     "name": "BahusExtractorTemp",
-                    "model": "gpt-4.1",
+                    "model": "gpt-4o",
                     "instructions": prompt,
                     "tools": [{"type": "file_search"}],
                     "tool_resources": {
@@ -1339,7 +1327,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 "https://api.openai.com/v1/chat/completions",
                 headers=json_header,
                 json={
-                    "model": "gpt-4.1",
+                    "model": "gpt-4o",
                     "messages": [{"role": "user", "content": [
                         {"type": "text", "text": prompt},
                         {"type": "file", "file": {"file_id": file_id}},
@@ -1358,7 +1346,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                     "https://api.openai.com/v1/chat/completions",
                     headers=json_header,
                     json={
-                        "model": "gpt-4.1",
+                        "model": "gpt-4o",
                         "messages": [{"role": "user", "content": [
                             {"type": "text", "text": prompt},
                             {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64}"}},
