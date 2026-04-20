@@ -141,6 +141,8 @@ async function main() {
   function shouldPollImportStatus(state) {
     if (state.runtime?.dataSource !== "local-api") return false;
     if (state.ui.activeView !== "overview") return false;
+    // Pause polling while an upload modal is open to prevent DOM destruction during OS file picker
+    if (state.ui.modal === "upload-files") return false;
     // Pause polling only while an active file upload is in progress
     if (state.runtime?.resources?.imports?.status === "saving") return false;
     const importId = state.ui.selectedImportId;

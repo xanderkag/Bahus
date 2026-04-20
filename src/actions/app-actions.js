@@ -1644,6 +1644,7 @@ export function createActions(store, backend = null) {
     },
     setUploadDraftFiles(_dataset, _value, event) {
       const newFiles = Array.from(event?.target?.files || []);
+      if (event?.target) event.target.value = "";
       const currentState = store.getState();
       const existingFiles = currentState.ui.uploadDraft?.files || [];
 
