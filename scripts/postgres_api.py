@@ -455,6 +455,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
               ib.processing_started_at,
               ib.processing_finished_at,
               ib.last_webhook_at,
+              ib.meta,
               owner.email as owner_email,
               created_by.email as created_by_email
             from import_batch ib
@@ -466,6 +467,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             (import_id,),
         ).fetchone()
         return item
+
 
     def get_default_user_id(self, conn) -> str | None:
         row = conn.execute(
