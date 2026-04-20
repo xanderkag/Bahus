@@ -1102,24 +1102,54 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             )
             return None
 
-    def _trigger_n8n_import_dispatch(self, import_id: str, force: bool = False) -> dict:
-        """Smart PDF extraction: analyze PDF type, then use Chat Completions.
+    # ──────────────────────────────────────────────────────────────────────────
+    #  AI PDF Extraction Pipeline
+    #
+    #  Flow:
+    #    /dispatch  →  _trigger_n8n_import_dispatch
+    #                    ├─ _load_price_file_bytes  (read from DB)
+    #                    ├─ _mark_import_processing  (DB update)
+    #                    ├─ _analyze_pdf             (PyMuPDF heuristic → mode)
+    #                    └─ Thread → _chat_completions_extract → _save_extraction_result
+    #
+    #  Modes:
+    #    text   — full text extracted by PyMuPDF → Chat Completions (fast, ~15s)
+    #    vision — pages rendered as PNG → Chat Completions Vision (for scans, ~30s)
+    # ──────────────────────────────────────────────────────────────────────────
 
-        Text PDFs → extract full text with PyMuPDF → Chat Completions
-        Scanned PDFs → render pages to images → Vision API (Chat Completions)
-        Processing runs in a short-lived background thread (30-120s).
+    _EXTRACTION_SYSTEM_PROMPT = (
+        "You are a master data extractor for wine/spirits price lists.\n"
+        "Extract ALL product rows from the provided document.\n"
+        "Output ONLY a valid JSON object (no markdown, no code fences):\n"
+        '{"rows": [{"name":"Full product name","article":"SKU/article if present",'
+        '"purchase_price":100.00,"volume_l":0.75,"country":"Country",'
+        '"category":"Wine/Spirits/Beer/etc","note":"any extra info"}]}\n'
+        "Rules:\n"
+        "- Extract EVERY row, do not skip or summarize.\n"
+        "- purchase_price must be a number (no currency symbols).\n"
+        "- volume_l in liters (0.75, 1.0, 0.5, etc).\n"
+        "- If a field value is unknown, use null.\n"
+        "- Do NOT wrap output in markdown code fences."
+    )
+
+    def _trigger_n8n_import_dispatch(self, import_id: str, force: bool = False) -> dict:
+        """Dispatch AI extraction: analyze PDF type then run Chat Completions in background.
+
+        Returns immediately after starting the background thread.
+        The thread writes results directly to the database.
         """
+        # ── 1. Load import + file bytes from DB ───────────────────────────────
         with self.db() as conn:
             batch_row = self.require_import(conn, import_id)
             if batch_row is None:
                 raise ValueError("Import not found")
 
             if not force:
-                existing_rows = conn.execute(
+                cnt = conn.execute(
                     "select count(*) as cnt from import_row where import_batch_id = %s",
                     (import_id,)
                 ).fetchone()["cnt"]
-                if existing_rows > 0:
+                if cnt > 0:
                     return {"import_id": import_id, "skipped": True, "reason": "already_processed"}
 
             files = self.load_import_files(conn, import_id)
@@ -1128,218 +1158,201 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 raise ValueError("Price file not found")
 
             file_id_db = str(price_file["id"])
-            file_bytes_row = conn.execute(
-                "select file_bytes, original_name, mime_type from import_file where id = %s",
+            file_row = conn.execute(
+                "select file_bytes, original_name from import_file where id = %s",
                 (file_id_db,)
             ).fetchone()
-            if not file_bytes_row or not file_bytes_row["file_bytes"]:
+            if not file_row or not file_row["file_bytes"]:
                 raise ValueError("File bytes not found — re-upload the file")
 
-            file_bytes = bytes(file_bytes_row["file_bytes"])
-            filename = file_bytes_row["original_name"] or "file.pdf"
+            file_bytes = bytes(file_row["file_bytes"])
+            filename = file_row["original_name"] or "file.pdf"
 
-            default_user_id = self.get_default_user_id(conn)
+            # ── 2. Mark import as processing ──────────────────────────────────
             job_id = str(uuid.uuid4())
+            default_user_id = self.get_default_user_id(conn)
             conn.execute(
                 "insert into job_run (id, type, target_type, target_id, status, payload, created_by_user_id) "
                 "values (%s, 'import_parse', 'import_batch', %s, 'running', '{}'::jsonb, %s)",
                 (job_id, import_id, default_user_id),
             )
             conn.execute(
-                "update import_batch set status='processing', processing_status='processing', "
-                "processing_started_at=now(), processing_finished_at=null, updated_at=now() where id=%s",
+                "update import_batch "
+                "set status='processing', processing_status='processing', "
+                "    processing_started_at=now(), processing_finished_at=null, updated_at=now() "
+                "where id=%s",
                 (import_id,),
             )
             conn.execute(
-                "update import_file set processing_status='processing' where import_batch_id=%s and file_kind='price'",
+                "update import_file set processing_status='processing' "
+                "where import_batch_id=%s and file_kind='price'",
                 (import_id,),
             )
             conn.commit()
 
-        # ── Analyze PDF ───────────────────────────────────────────────────────
+        # ── 3. Analyze PDF → pick extraction mode ────────────────────────────
         extract_mode, pdf_payload = self._analyze_pdf(file_bytes, filename)
-        n8n_logger.info(f"[AI] PDF analysis: mode={extract_mode} file={filename}")
+        n8n_logger.info(f"[AI] dispatch import={import_id} file={filename} mode={extract_mode}")
 
         api_key = self.config.openai_api_key
         if not api_key:
             raise ValueError("OPENAI_API_KEY is not configured")
 
-        # ── Run extraction in background thread ──────────────────────────────
-        def _run():
+        # ── 4. Run extraction in background thread ────────────────────────────
+        def _bg_extract():
             try:
                 rows = self._chat_completions_extract(api_key, extract_mode, pdf_payload, filename, import_id)
                 status = "parsed" if rows else "failed"
                 error = None if rows else "No rows extracted"
-                self._save_extraction_result(import_id, job_id, file_id_db, rows, status, error)
-            except Exception as exc:
-                n8n_logger.error(f"[AI] ERROR import={import_id}\n{traceback.format_exc()}")
-                self._save_extraction_result(import_id, job_id, file_id_db, [], "failed", str(exc))
+            except Exception:
+                n8n_logger.error(f"[AI] extraction error import={import_id}\n{traceback.format_exc()}")
+                rows, status, error = [], "failed", traceback.format_exc().splitlines()[-1]
+            self._save_extraction_result(import_id, job_id, file_id_db, rows, status, error)
 
-        threading.Thread(target=_run, daemon=True).start()
+        threading.Thread(target=_bg_extract, daemon=True, name=f"ai-extract-{import_id[:8]}").start()
         return {"import_id": import_id, "job_id": job_id, "status": "processing", "extract_mode": extract_mode}
 
     # ── PDF Analysis ──────────────────────────────────────────────────────────
 
-    def _analyze_pdf(self, file_bytes: bytes, filename: str) -> tuple:
-        """Analyze PDF to determine extraction strategy.
+    def _analyze_pdf(self, file_bytes: bytes, filename: str) -> tuple[str, object]:
+        """Analyze PDF and decide extraction strategy.
 
-        Returns (mode, payload):
-        - ('text', full_text_string)  — for text-based PDFs
-        - ('vision', [base64_png, ...]) — for scanned/image PDFs
+        Returns:
+            ('text',   full_text_str)     — text-based PDF, send as plain text
+            ('vision', [b64_png, ...])    — scanned/image PDF, send as Vision images
+
+        Heuristic rules (in priority order):
+            1. Short PDF (≤5 pages) → always Vision (accurate, cheap enough)
+            2. Long PDF with rich text and price patterns → text (fast, handles 100+ rows)
+            3. Everything else → Vision
         """
-        import fitz  # PyMuPDF
+        import re
         import base64
-        import io
+        import fitz  # PyMuPDF
 
         doc = fitz.open(stream=file_bytes, filetype="pdf")
-        pages_text = []
-        total_chars = 0
+        page_count = len(doc)
+        pages_text = [page.get_text("text") or "" for page in doc]
+        total_chars = sum(len(t.strip()) for t in pages_text)
+        avg_chars = total_chars / max(page_count, 1)
+        price_hits = len(re.findall(r'\d[\d\s]{2,}', "\n".join(pages_text)))
 
-        for page in doc:
-            text = page.get_text("text") or ""
-            pages_text.append(text)
-            total_chars += len(text.strip())
-
-        avg_chars = total_chars / max(len(doc), 1)
-
-        # Count price-like patterns (numbers ≥ 3 digits, typical for prices)
-        import re
-        full_text_raw = "\n".join(pages_text)
-        price_numbers = re.findall(r'\d[\d\s]{2,}', full_text_raw)
         n8n_logger.info(
-            f"[AI] PDF scan: pages={len(doc)} total_chars={total_chars} "
-            f"avg_chars/page={avg_chars:.0f} price_patterns={len(price_numbers)}"
+            f"[AI] analyze_pdf file={filename} pages={page_count} "
+            f"total_chars={total_chars} avg={avg_chars:.0f} price_hits={price_hits}"
         )
 
-        # Smart heuristic:
-        # 1. Short PDFs (≤5 pages) → always Vision (more accurate, cheap enough)
-        # 2. Long PDFs with rich text + price data → text mode (fast, handles 100+ rows)
-        # 3. Everything else → Vision
-        if len(doc) <= 5:
-            n8n_logger.info(f"[AI] Short PDF ({len(doc)} pages) → Vision mode for maximum accuracy")
-        else:
-            has_rich_text = avg_chars > 200
-            has_price_data = len(price_numbers) > 5
-            if has_rich_text and has_price_data:
-                full_text = "\n\n--- PAGE BREAK ---\n\n".join(pages_text)
-                doc.close()
-                return ("text", full_text)
+        use_text = (
+            page_count > 5           # not a short doc
+            and avg_chars > 200      # rich text layer
+            and price_hits > 5       # actually has numeric data
+        )
 
+        if use_text:
+            doc.close()
+            full_text = "\n\n--- PAGE BREAK ---\n\n".join(pages_text)
+            n8n_logger.info(f"[AI] mode=text ({len(full_text)} chars)")
+            return "text", full_text
 
-
-        # Scanned PDF — render pages as images
-        n8n_logger.info(f"[AI] Scanned PDF detected, rendering {len(doc)} pages as images")
-        images_b64 = []
-        for page in doc:
-            # Render at 200 DPI for good quality without excessive size
-            pix = page.get_pixmap(dpi=200)
-            img_bytes = pix.tobytes("png")
-            images_b64.append(base64.b64encode(img_bytes).decode("ascii"))
-
+        # Vision: render each page to PNG at 200 DPI
+        n8n_logger.info(f"[AI] mode=vision (rendering {page_count} pages at 200 DPI)")
+        images_b64 = [
+            base64.b64encode(page.get_pixmap(dpi=200).tobytes("png")).decode("ascii")
+            for page in doc
+        ]
         doc.close()
-        return ("vision", images_b64)
+        return "vision", images_b64
 
     # ── Chat Completions Extraction ───────────────────────────────────────────
 
-    def _chat_completions_extract(self, api_key: str, mode: str, payload, filename: str, import_id: str) -> list:
-        """Call OpenAI Chat Completions to extract rows.
+    def _chat_completions_extract(
+        self, api_key: str, mode: str, payload, filename: str, import_id: str
+    ) -> list:
+        """Send PDF content to GPT-4o Chat Completions and parse the JSON response.
 
-        Text mode: sends full text as user message.
-        Vision mode: sends page images as image_url content parts.
+        Args:
+            mode:    'text' or 'vision'
+            payload: full_text string (text mode) or list of base64 PNG strings (vision mode)
         """
         import re
 
-        system_prompt = (
-            "You are a master data extractor for wine/spirits price lists.\n"
-            "Extract ALL product rows from the provided document.\n"
-            "Output ONLY a valid JSON object (no markdown, no code fences):\n"
-            '{"rows": [{"name":"Full product name","article":"SKU/article if present",'
-            '"purchase_price":100.00,"volume_l":0.75,"country":"Country",'
-            '"category":"Wine/Spirits/Beer/etc","note":"any extra info"}]}\n'
-            "Rules:\n"
-            "- Extract EVERY row, do not skip or summarize.\n"
-            "- purchase_price must be a number (no currency symbols).\n"
-            "- volume_l in liters (0.75, 1.0, 0.5, etc).\n"
-            "- If a field value is unknown, use null.\n"
-            "- Do NOT wrap in markdown code fences."
-        )
-
         if mode == "text":
-            user_content = f"Here is the full text of the price list '{filename}':\n\n{payload}"
             messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content},
+                {"role": "system", "content": self._EXTRACTION_SYSTEM_PROMPT},
+                {"role": "user",   "content": f"Price list '{filename}':\n\n{payload}"},
             ]
         else:
-            # Vision mode — send images
-            content_parts = [{"type": "text", "text": f"Extract ALL product rows from this scanned price list '{filename}'. There are {len(payload)} pages."}]
-            for i, img_b64 in enumerate(payload):
-                content_parts.append({
+            # Vision: system prompt + one user message with all page images
+            image_parts = [
+                {
                     "type": "image_url",
-                    "image_url": {"url": f"data:image/png;base64,{img_b64}", "detail": "high"},
-                })
+                    "image_url": {"url": f"data:image/png;base64,{b64}", "detail": "high"},
+                }
+                for b64 in payload
+            ]
             messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": content_parts},
+                {"role": "system", "content": self._EXTRACTION_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": f"Scanned price list '{filename}' ({len(payload)} pages):"},
+                        *image_parts,
+                    ],
+                },
             ]
 
-        n8n_logger.info(f"[AI] Calling Chat Completions mode={mode} import={import_id}")
+        n8n_logger.info(f"[AI] chat_completions import={import_id} mode={mode} pages/chars={len(payload)}")
         resp = requests.post(
             "https://api.openai.com/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             json={
                 "model": "gpt-4o",
                 "messages": messages,
                 "response_format": {"type": "json_object"},
                 "temperature": 0,
-
             },
-            timeout=300,  # 5 minutes for large documents
+            timeout=300,
         )
 
         if not resp.ok:
-            raise ValueError(f"Chat Completions failed ({resp.status_code}): {resp.text[:300]}")
+            raise ValueError(f"OpenAI error {resp.status_code}: {resp.text[:300]}")
 
-        raw_text = resp.json()["choices"][0]["message"]["content"]
-        n8n_logger.info(f"[AI] Response import={import_id} length={len(raw_text)} preview={raw_text[:200]}")
+        raw = resp.json()["choices"][0]["message"]["content"]
+        n8n_logger.info(f"[AI] response import={import_id} len={len(raw)} preview={raw[:150]}")
 
-        # Parse JSON
-        cleaned = raw_text.strip()
-        cleaned = re.sub(r'【[^】]*】', '', cleaned)
+        # Sanitize response (strip markdown fences and citation markers if any)
+        cleaned = re.sub(r'【[^】]*】', '', raw).strip()
         if cleaned.startswith("```"):
-            cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned)
-            cleaned = re.sub(r'\s*```\s*$', '', cleaned)
-        cleaned = cleaned.strip()
+            cleaned = re.sub(r'^```(?:json)?\s*|\s*```\s*$', '', cleaned, flags=re.MULTILINE).strip()
 
         if not cleaned or cleaned[0] not in ('{', '['):
-            raise ValueError(f"Not valid JSON: {raw_text[:300]}")
+            raise ValueError(f"Response is not valid JSON: {raw[:300]}")
 
         parsed = json.loads(cleaned)
         rows = parsed if isinstance(parsed, list) else (parsed.get("rows") or [])
-        n8n_logger.info(f"[AI] Extracted {len(rows)} rows from {filename}")
+        n8n_logger.info(f"[AI] extracted {len(rows)} rows from {filename}")
         return rows
 
-    # ── Save Result ───────────────────────────────────────────────────────────
+    # ── Persist Extraction Result ─────────────────────────────────────────────
 
-    def _save_extraction_result(self, import_id: str, job_id: str, file_id: str,
-                                 rows: list, status: str, error: str | None) -> None:
-        """Save extraction result to DB. Called from background thread."""
+    def _save_extraction_result(
+        self, import_id: str, job_id: str, file_id: str,
+        rows: list, status: str, error: str | None
+    ) -> None:
+        """Write extraction result to DB. Called from background extraction thread."""
         with self.db() as conn:
             conn.execute("delete from import_row where import_batch_id=%s", (import_id,))
-            for index, row in enumerate(rows):
+            for i, row in enumerate(rows):
                 conn.execute(
                     """
                     insert into import_row (
-                      import_batch_id, row_index, raw_name, normalized_name,
-                      category, country, volume_l, purchase_price, promo, raw_payload
+                        import_batch_id, row_index, raw_name, normalized_name,
+                        category, country, volume_l, purchase_price, promo, raw_payload
                     ) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)
                     """,
                     (
-                        import_id, index + 1,
-                        row.get("name") or row.get("raw_name") or f"Строка {index+1}",
+                        import_id, i + 1,
+                        row.get("name") or row.get("raw_name") or f"Строка {i+1}",
                         row.get("normalized_name") or row.get("name"),
                         row.get("category"),
                         row.get("country"),
@@ -1351,16 +1364,18 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 )
             conn.execute(
                 """
-                update import_batch set
-                    status=%s, processing_status=%s,
+                update import_batch
+                set status=%s, processing_status=%s,
                     processing_finished_at=now(), last_webhook_at=now(), updated_at=now(),
-                    meta = jsonb_set(coalesce(meta,'{}'::jsonb), '{error}', %s::jsonb)
+                    meta = jsonb_set(coalesce(meta, '{}'::jsonb), '{error}', %s::jsonb)
                 where id=%s
                 """,
                 (status, status, json.dumps(error or ""), import_id),
             )
             conn.execute(
-                "update import_file set processing_status=%s, last_error=%s where import_batch_id=%s and file_kind='price'",
+                "update import_file "
+                "set processing_status=%s, last_error=%s "
+                "where import_batch_id=%s and file_kind='price'",
                 (status, error, import_id),
             )
             conn.execute(
@@ -1368,10 +1383,12 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 ("done" if status == "parsed" else "failed", job_id),
             )
             conn.commit()
-        n8n_logger.info(f"[AI] Saved import={import_id} status={status} rows={len(rows)} error={error}")
+        n8n_logger.info(f"[AI] saved import={import_id} status={status} rows={len(rows)}")
+
 
 
     def handle_dispatch_import(self, import_id: str) -> None:
+
         payload = self.read_json_body()
         try:
             res = self._trigger_n8n_import_dispatch(import_id, force=bool(payload.get("force", False)))
