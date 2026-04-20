@@ -1982,7 +1982,7 @@ def cleanup_worker():
             # Also clean up Postgres file_bytes
             import psycopg
             try:
-                with psycopg.connect(PostgresApiHandler.config.db_url) as conn:
+                with psycopg.connect(PostgresApiHandler.config.db_dsn) as conn:
                     # Clear out bytes for old files to reclaim space
                     res = conn.execute("UPDATE import_file SET file_bytes = NULL, cleanup_done = TRUE WHERE uploaded_at < NOW() - INTERVAL '7 days' AND cleanup_done = FALSE")
                     if res.rowcount > 0:
@@ -2006,10 +2006,14 @@ def main() -> None:
     server = ThreadingHTTPServer((args.host, args.port), PostgresApiHandler)
     logger.info(f"bahus PostgreSQL API running at http://{args.host}:{args.port}")
     
+    # Log key config at startup for diagnostics
+    openai_key_status = "SET (len=" + str(len(PostgresApiHandler.config.openai_api_key or "")) + ")" if PostgresApiHandler.config.openai_api_key else "NOT SET"
+    logger.info(f"[CONFIG] OPENAI_API_KEY: {openai_key_status}")
+
     # Run inline migration
     try:
         import psycopg
-        with psycopg.connect(PostgresApiHandler.config.db_url) as conn:
+        with psycopg.connect(PostgresApiHandler.config.db_dsn) as conn:
             conn.execute("ALTER TABLE import_file ADD COLUMN IF NOT EXISTS file_bytes BYTEA;")
             conn.execute("ALTER TABLE import_file ADD COLUMN IF NOT EXISTS cleanup_done BOOLEAN DEFAULT FALSE;")
             conn.commit()
