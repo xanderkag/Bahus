@@ -959,7 +959,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         source_file = dispatch_payload.get("source_file") or "-"
 
         data = {k: v for k, v in dispatch_payload.items() if k != "file_binary"}
-file_info = dispatch_payload.get("file_binary")
+        file_info = dispatch_payload.get("file_binary")
 
         n8n_logger.info(
             f"[N8N] DISPATCH → url={self.config.n8n_webhook_url} "
