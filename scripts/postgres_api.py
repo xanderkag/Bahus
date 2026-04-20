@@ -264,18 +264,27 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             return self.handle_dispatch_import(route.split("/")[3])
         if route == "/api/debug/test":
             try:
+                import psycopg
+                log = []
                 with self.db() as conn:
-                    # Check if file_bytes exists
+                    try:
+                        conn.execute("ALTER TABLE import_file ADD COLUMN IF NOT EXISTS file_bytes BYTEA;")
+                        conn.execute("ALTER TABLE import_file ADD COLUMN IF NOT EXISTS cleanup_done BOOLEAN DEFAULT FALSE;")
+                        conn.commit()
+                        log.append("Migration successful")
+                    except Exception as e:
+                        log.append(f"Migration error: {e}")
+                
                     col = conn.execute("SELECT column_name FROM information_schema.columns WHERE table_name='import_file' AND column_name='file_bytes'").fetchone()
+                    rows = []
+                    if col:
+                        rows = conn.execute("SELECT id, original_name, size_bytes, length(file_bytes) as bytes_len FROM import_file ORDER BY uploaded_at DESC LIMIT 3").fetchall()
                     
-                    # Check recent files to see length of bytes
-                    rows = conn.execute("SELECT id, original_name, size_bytes, length(file_bytes) as bytes_len FROM import_file ORDER BY uploaded_at DESC LIMIT 3").fetchall()
-                    db_files = [dict(r) for r in rows]
-                    
-                return self.respond_json({"column_exists": bool(col), "files": db_files})
+                return self.respond_json({"log": log, "column_exists": bool(col), "files": [dict(r) for r in rows]})
             except Exception as e:
                 import traceback
                 return self.respond_json({"error": str(e), "trace": traceback.format_exc()})
+
 
 
 
