@@ -689,55 +689,101 @@ function renderDetailProperties(state, product, currentImport, isEditing = false
     .join("");
 }
 
+function renderDetailProperties(state, product, currentImport, isEditing = false) {
+  const fields = [
+    { label: "Наименование в прайсе", value: product.raw_name, editable: false },
+    { label: "Разобранное имя", value: product.normalized_name, field: "manual_normalized_name", editable: true, kind: "text" },
+    { label: "Категория", value: product.category, field: "category", editable: false },
+    { label: "Страна", value: product.country, field: "country", editable: false },
+    { label: "Объём (л)", value: product.volume_l, field: "volume_l", editable: false, kind: "number" },
+    { label: "Закупочная цена", value: product.purchase_price, editable: false, kind: "number" },
+    { label: "РРЦ", value: product.rrc_min, editable: false, kind: "number" },
+    {
+      label: "Статус проверки",
+      value: product.review_status,
+      field: "review_status",
+      editable: true,
+      kind: "select",
+      options: [
+        { value: "pending", label: "Ждёт проверки" },
+        { value: "checked", label: "Проверено" },
+        { value: "excluded", label: "Исключено" },
+      ],
+    },
+  ];
+
+  return `<div class="clean-property-list">
+    ${fields.map(field => `
+      <div class="clean-property-row ${isEditing && field.editable ? "is-editable" : ""}">
+        <span class="property-label">${escapeHtml(field.label)}</span>
+        <div class="property-value">
+          ${
+            isEditing && field.editable
+              ? field.kind === "select"
+                ? `
+                  <select class="input minimal-input" data-change="setProductField" data-product-id="${product.id}" data-field="${field.field}">
+                    ${field.options.map(o => `<option value="${o.value}" ${field.value === o.value ? "selected" : ""}>${escapeHtml(o.label)}</option>`).join("")}
+                  </select>
+                `
+                : `
+                  <input
+                    class="input minimal-input"
+                    ${field.kind === "number" ? 'inputmode="decimal"' : ""}
+                    value="${escapeHtml(formatValue(field.value ?? ""))}"
+                    data-change="setProductField"
+                    data-product-id="${product.id}"
+                    data-field="${field.field}"
+                  />
+                `
+              : `<strong>${escapeHtml(formatValue(
+                  field.kind === "number" && field.field !== "volume_l"
+                    ? formatMoney(field.value, currentImport.meta.currency)
+                    : field.field === "review_status"
+                      ? formatReviewStatus(field.value)
+                      : field.value,
+                ))}</strong>`
+          }
+        </div>
+      </div>
+    `).join("")}
+  </div>`;
+}
+
 function renderRowDetailModal(state) {
   const product = getSelectedProductDetail(state);
-  if (!product || state.ui.modal !== "row-details") {
-    return "";
-  }
+  if (!product || state.ui.modal !== "row-details") return "";
 
   const currentImport = getCurrentImport(state);
   const supplier = getCurrentSupplier(state);
-  const issues = getIssuesForProduct(state, product.id);
-  const issueSummary = getRowIssueSummary(state, product.id);
   const isEditing = Boolean(state.ui.rowDetailEditMode);
 
   return `
     <div class="modal-overlay">
-      <div class="app-dialog row-detail-dialog">
+      <div class="app-dialog row-detail-dialog clean-dialog">
         <div class="dialog-header row-detail-dialog-header">
           <div class="row-detail-heading">
-            <span class="eyebrow">Позиция из прайса</span>
+            <span class="eyebrow">${escapeHtml(formatValue(supplier?.name))} · Строка ${product.row_index}</span>
             <h3>${escapeHtml(formatValue(product.normalized_name || product.raw_name))}</h3>
-            <p>Строка ${product.row_index} · ${escapeHtml(currentImport.meta.source_file)} · ${escapeHtml(formatValue(supplier?.name))}</p>
           </div>
           <div class="toolbar-actions row-detail-header-actions">
-            <span class="pill pill-${issueSummary.kind}">${issueSummary.label}${issueSummary.count ? ` · ${issueSummary.count}` : ""}</span>
             <button class="ghost-btn" data-action="toggleRowDetailEditMode">${isEditing ? "Готово" : "Редактировать"}</button>
-            <button class="ghost-btn" data-action="closeModal" aria-label="Закрыть окно деталей">Закрыть</button>
+            <button class="ghost-btn" data-action="closeModal" aria-label="Закрыть">Закрыть</button>
           </div>
         </div>
-        <div class="row-detail-summary-wrap">
-          <div class="row-detail-summary">
-            <div class="compact-stat compact-stat-inline"><span>Код позиции</span><strong>${escapeHtml(formatValue(product.product_id || product.temp_id))}</strong></div>
-            <div class="compact-stat compact-stat-inline"><span>Категория</span><strong>${escapeHtml(formatValue(product.category))}</strong></div>
-            <div class="compact-stat compact-stat-inline"><span>Страна</span><strong>${escapeHtml(formatValue(product.country))}</strong></div>
-            <div class="compact-stat compact-stat-inline"><span>Статус проверки</span><strong>${escapeHtml(formatReviewStatus(product.review_status))}</strong></div>
-          </div>
-        </div>
-        <div class="row-detail-shell">
-          <section class="detail-card row-detail-main">
-            <div class="row-detail-card-header">
-              <h3>Что у позиции сейчас</h3>
-              <p class="hint">${isEditing ? "Измените спорные поля и подтвердите правки кнопкой «Готово»." : "Ключевые поля, которые уже извлечены из прайса и участвуют в review."}</p>
+        
+        <div class="row-detail-shell clean-shell">
+          <!-- Левая колонка: Характеристики -->
+          <section class="detail-card clean-card">
+            <div class="clean-card-header">
+              <h3>Параметры позиции</h3>
             </div>
-            <div class="detail-properties-grid">
-              ${renderDetailProperties(state, product, currentImport, isEditing)}
-            </div>
+            ${renderDetailProperties(state, product, currentImport, isEditing)}
           </section>
-          <section class="detail-card row-detail-side">
-            <div class="row-detail-card-header">
-              <h3>Фото и карточка товара</h3>
-              <p class="hint">Будут подтягиваться после сопоставления с каталогом или ручной загрузки.</p>
+
+          <!-- Правая колонка: Фото и каталог -->
+          <section class="detail-card clean-card side-card">
+            <div class="clean-card-header">
+              <h3>Визуал и сопоставление</h3>
             </div>
             <div class="detail-photo-grid">
               ${renderPhotoGallery(product)}
@@ -745,72 +791,19 @@ function renderRowDetailModal(state) {
             ${
               product.manual_match_result
                 ? `
-                  <div class="match-card">
+                  <div class="match-card minimal-match">
                     <div class="match-card-header">
-                      <strong>Найденный товар каталога</strong>
-                      <span class="pill pill-good">${escapeHtml(product.manual_match_result.catalog_id || product.manual_match_id || "сопоставлено")}</span>
+                      <strong>Товар в каталоге</strong>
+                      <span class="pill pill-good">Выбрано</span>
                     </div>
                     <div class="match-grid">
                       <div><span>Наименование</span><strong>${escapeHtml(formatValue(product.manual_match_result.title))}</strong></div>
-                      <div><span>Категория</span><strong>${escapeHtml(formatValue(product.manual_match_result.category))}</strong></div>
-                      <div><span>Страны</span><strong>${escapeHtml(formatValue((product.manual_match_result.countries || []).join(", ")))}</strong></div>
-                      <div><span>Поставщики</span><strong>${escapeHtml(formatValue((product.manual_match_result.supplier_names || []).join(", ")))}</strong></div>
-                      <div><span>Мин. закупка</span><strong>${formatMoney(product.manual_match_result.price_min)}</strong></div>
-                      <div><span>Макс. закупка</span><strong>${formatMoney(product.manual_match_result.price_max)}</strong></div>
+                      <div><span>Закупочная цена</span><strong>${formatMoney(product.manual_match_result.price_min)}</strong></div>
                     </div>
                   </div>
                 `
-                : '<div class="empty-block row-detail-empty">Карточка каталога появится после сопоставления. Сюда же можно будет подтянуть фото, атрибуты и описание.</div>'
+                : '<div class="empty-block row-detail-empty">Сопоставление с каталогом пока не выполнено.</div>'
             }
-          </section>
-          <section class="detail-card">
-            <div class="row-detail-card-header">
-              <h3>Ошибки и замечания разбора</h3>
-              <p class="hint">Здесь видно, что потребует ручной проверки перед добавлением позиции в КП.</p>
-            </div>
-            <div class="detail-list">
-              ${
-                issues.length
-                  ? issues
-                      .map(
-                        (issue) => `
-                          <div class="issue-row">
-                            <span class="pill pill-${issue.severity === "error" ? "bad" : "warn"}">${issue.severity === "error" ? "Ошибка" : "Предупреждение"}</span>
-                            <div>
-                              <strong>${escapeHtml(issue.field)}</strong>
-                              <div>${escapeHtml(issue.message)}</div>
-                              ${
-                                issue.raw_value !== undefined
-                                  ? `<div class="hint">Исходное значение: ${escapeHtml(formatValue(issue.raw_value))}</div>`
-                                  : ""
-                              }
-                            </div>
-                          </div>
-                        `,
-                      )
-                      .join("")
-                  : '<div class="empty-block row-detail-empty">У этой строки нет ошибок парсинга. Можно переходить к проверке и добавлению в КП.</div>'
-              }
-            </div>
-          </section>
-          <section class="detail-card ${isEditing ? "" : "is-collapsed"}">
-            <div class="row-detail-card-header">
-              <h3>Ручная корректировка</h3>
-              <p class="hint">Используйте только для спорных строк, которые не удалось разобрать автоматически.</p>
-            </div>
-            <div class="future-stack">
-              <div class="form-stack">
-                <label class="field-label">Нормализованное имя</label>
-                <input class="input" value="${escapeHtml(product.manual_normalized_name || product.normalized_name || "")}" data-input="setProductField" data-product-id="${product.id}" data-field="manual_normalized_name" placeholder="Нормализованное имя" />
-                <textarea class="input textarea compact-textarea" data-input="setProductField" data-product-id="${product.id}" data-field="normalization_note" placeholder="Почему поменяли имя и что важно учесть">${escapeHtml(product.normalization_note || "")}</textarea>
-                <button class="ghost-btn" data-action="saveManualNormalization" data-product-id="${product.id}">Сохранить нормализацию</button>
-              </div>
-              <div class="form-stack">
-                <label class="field-label">Сопоставление с каталогом</label>
-                <input class="input" value="${escapeHtml(product.manual_match_id || "")}" data-input="setProductField" data-product-id="${product.id}" data-field="manual_match_id" placeholder="Код каталога / код сопоставления" />
-                <button class="ghost-btn" data-action="saveManualMatch" data-product-id="${product.id}">Сохранить сопоставление</button>
-              </div>
-            </div>
           </section>
         </div>
       </div>
