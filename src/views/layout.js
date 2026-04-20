@@ -193,27 +193,69 @@ function renderUploadFilesModal(state) {
   const uploadProgress = Number.isFinite(importsResource.currentFilePercent) ? importsResource.currentFilePercent : 0;
   const total = importsResource.total || 1;
   const completed = importsResource.completed || 0;
-  const importRef = draft.importRef || "";
 
-  // ── SUCCESS STATE ────────────────────────────────────────────────────────────
-  if (isDone) {
+  // Find the most recently created/dispatched import for live status
+  const lastImportId = importsResource.lastCreatedImportId || importsResource.lastDispatchedId;
+  const liveImport = lastImportId ? state.entities.importsById[lastImportId] : null;
+  const liveStatus = liveImport?.status;
+  const liveRowCount = liveImport?.row_count ?? 0;
+  const isProcessingOnServer = ["queued", "pending", "processing"].includes(liveStatus);
+  const isServerDone = ["parsed", "partial"].includes(liveStatus);
+  const isServerError = liveStatus === "failed" || liveStatus === "error";
+
+  // ── PHASE 3: AI Processing (upload done, server working) ─────────────────
+  if (isDone && liveImport && (isProcessingOnServer || isServerDone || isServerError)) {
+    const statusLabel = isServerDone
+      ? `Готово — ${liveRowCount} позиций извлечено`
+      : isServerError
+        ? "Ошибка обработки"
+        : "ИИ анализирует документ...";
+    const statusIcon = isServerDone ? "✓" : isServerError ? "✕" : null;
+    const statusColor = isServerDone ? "var(--good)" : isServerError ? "var(--bad)" : "var(--accent)";
+
     return `
       <div class="modal-overlay">
         <div class="app-dialog compact-dialog">
           <div class="dialog-header">
             <div>
               <h3>Загрузка файлов поставщиков</h3>
+              <p>Файл принят и передан в обработку.</p>
             </div>
           </div>
-          <div class="upload-success-banner">
-            <div class="upload-success-icon">✓</div>
-            <div class="upload-success-copy">
-              <strong>Файл принят системой</strong>
-              ${importRef ? `<span class="upload-import-ref">Номер импорта: <strong>${escapeHtml(importRef)}</strong></span>` : ""}
-              <span>ИИ-обработка запущена в фоне — данные появятся в таблице автоматически.</span>
+
+          <div class="upload-phase-card" style="border-color:${statusColor}20;">
+            <div class="upload-phase-steps">
+              <div class="upload-phase-step is-done">
+                <span class="upload-phase-dot" style="background:var(--good);">✓</span>
+                <span>Загружено на сервер</span>
+              </div>
+              <div class="upload-phase-step ${isProcessingOnServer ? 'is-active' : isServerDone ? 'is-done' : isServerError ? 'is-error' : ''}">
+                <span class="upload-phase-dot" style="background:${statusColor};">
+                  ${statusIcon ? statusIcon : '<span class="upload-phase-spinner"></span>'}
+                </span>
+                <span>${statusLabel}</span>
+              </div>
             </div>
+
+            ${isServerDone ? `
+              <div class="upload-result-badge" style="background:color-mix(in srgb,var(--good) 10%,transparent);border-color:var(--good);">
+                <span style="font-size:28px;font-weight:800;color:var(--good);">${liveRowCount}</span>
+                <span style="color:var(--muted);font-size:var(--text-xs);">позиций извлечено</span>
+              </div>
+            ` : isProcessingOnServer ? `
+              <div class="upload-processing-hint">
+                <div class="boot-loader" style="width:16px;height:16px;border-width:2px;flex-shrink:0;"></div>
+                <span>Данные появятся в таблице автоматически — можно закрыть окно</span>
+              </div>
+            ` : isServerError ? `
+              <div class="upload-processing-hint" style="color:var(--bad);">
+                <span>⚠ Ошибка обработки. Попробуйте переотправить файл.</span>
+              </div>
+            ` : ""}
           </div>
-          <div class="toolbar-actions justify-end" style="margin-top: 16px;">
+
+          <div class="toolbar-actions justify-end" style="margin-top:16px;">
+            <button class="ghost-btn" data-action="acceptImportUpload">Загрузить ещё</button>
             <button class="primary-btn" data-action="acceptImportUpload">Готово — закрыть</button>
           </div>
         </div>
@@ -221,7 +263,60 @@ function renderUploadFilesModal(state) {
     `;
   }
 
-  // ── IDLE / SAVING STATE ──────────────────────────────────────────────────────
+  // ── PHASE 2: Uploading (progress bars) ───────────────────────────────────
+  if (isDone || isSubmitting) {
+    const files = draft.files || [];
+    return `
+      <div class="modal-overlay">
+        <div class="app-dialog compact-dialog">
+          <div class="dialog-header">
+            <div>
+              <h3>Загрузка файлов поставщиков</h3>
+              <p>${isDone ? "Файлы переданы на сервер." : `Файл ${completed + 1} из ${total} — отправка...`}</p>
+            </div>
+          </div>
+
+          <div class="upload-phase-card">
+            ${files.map((file, idx) => {
+              const fileIsDone = isDone || idx < completed;
+              const fileIsActive = !isDone && idx === completed;
+              const pct = fileIsActive ? uploadProgress : fileIsDone ? 100 : 0;
+              return `
+                <div class="upload-file-status-row">
+                  <div class="upload-file-status-icon ${fileIsDone ? 'is-done' : fileIsActive ? 'is-active' : ''}">
+                    ${fileIsDone
+                      ? '<span style="color:var(--good);font-weight:700;">✓</span>'
+                      : fileIsActive
+                        ? '<div class="boot-loader" style="width:12px;height:12px;border-width:2px;"></div>'
+                        : '<span style="color:var(--muted);">○</span>'
+                    }
+                  </div>
+                  <div class="upload-file-status-info">
+                    <div class="upload-file-status-name">
+                      <span>${escapeHtml(file.name)}</span>
+                      <span class="upload-file-status-size">${Math.round((file.size || 0) / 1024)} КБ</span>
+                      ${fileIsDone ? '<span class="upload-file-status-label" style="color:var(--good);">Загружено</span>' : fileIsActive ? `<span class="upload-file-status-label" style="color:var(--accent);">${pct}%</span>` : ""}
+                    </div>
+                    ${fileIsActive ? `
+                      <div class="upload-progress-bar upload-progress-bar-active" style="margin-top:4px;">
+                        <span style="width:${Math.max(4, pct)}%;"></span>
+                      </div>
+                    ` : fileIsDone ? `
+                      <div class="upload-progress-bar" style="margin-top:4px;">
+                        <span style="width:100%;background:var(--good);"></span>
+                      </div>
+                    ` : ""}
+                  </div>
+                </div>
+              `;
+            }).join("")}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ── PHASE 1: Form (idle) ─────────────────────────────────────────────────
   return `
     <div class="modal-overlay">
       <div class="app-dialog compact-dialog">
@@ -230,14 +325,14 @@ function renderUploadFilesModal(state) {
             <h3>Загрузка файлов поставщиков</h3>
             <p>Подготовьте новый импорт для проверки.</p>
           </div>
-          ${isSubmitting ? "" : `<button class="ghost-btn" data-action="closeModal">Закрыть</button>`}
+          <button class="ghost-btn" data-action="closeModal">Закрыть</button>
         </div>
         <div class="panel" style="display:flex; flex-direction:column; gap:16px; margin-bottom:16px;">
           <h4 style="margin:0; font-size:var(--text-sm); color:var(--text);">Параметры импорта</h4>
           <div class="form-grid">
             <div class="form-stack">
               <label class="field-label">Поставщик</label>
-              <select class="input" data-change="setUploadDraftField" data-field="supplierId" ${isSubmitting ? "disabled" : ""}>
+              <select class="input" data-change="setUploadDraftField" data-field="supplierId">
                 ${suppliers
                   .map(
                     (supplier) =>
@@ -248,7 +343,7 @@ function renderUploadFilesModal(state) {
             </div>
             <div class="form-stack">
               <label class="field-label">Категория прайса</label>
-              <select class="input" data-change="setUploadDraftField" data-field="documentType" ${isSubmitting ? "disabled" : ""}>
+              <select class="input" data-change="setUploadDraftField" data-field="documentType">
                 <option value="price_list" ${draft.documentType === "price_list" ? "selected" : ""}>Общий прайс</option>
                 <option value="promo" ${draft.documentType === "promo" ? "selected" : ""}>Акция / promo</option>
                 <option value="request_offer" ${draft.documentType === "request_offer" ? "selected" : ""}>Под конкретный запрос</option>
@@ -257,71 +352,44 @@ function renderUploadFilesModal(state) {
           </div>
           <div class="form-stack">
             <label class="field-label">Связанный запрос / номер КП (опционально)</label>
-            <input class="input" placeholder="Например: Запрос на комплектующие от Лукойл..." value="${escapeHtml(draft.requestId || "")}" data-input="setUploadDraftField" data-field="requestId" ${isSubmitting ? "disabled" : ""} />
+            <input class="input" placeholder="Например: Запрос на комплектующие от Лукойл..." value="${escapeHtml(draft.requestId || "")}" data-input="setUploadDraftField" data-field="requestId" />
           </div>
         </div>
 
         <div class="panel" style="display:flex; flex-direction:column; gap:16px; margin-bottom:16px;">
           <h4 style="margin:0; font-size:var(--text-sm); color:var(--text);">Медиа и файлы</h4>
           <div class="form-stack">
-            <label class="upload-dropzone ${isSubmitting ? "upload-dropzone-disabled" : ""}">
-              <input class="upload-dropzone-input-hidden" type="file" multiple data-change="setUploadDraftFiles" ${isSubmitting ? "disabled" : ""} />
-              <strong>${isSubmitting ? "Идёт загрузка..." : "Перетащите прайсы и любые вложения сюда"}</strong>
-              <span>${isSubmitting ? "Дождитесь завершения." : "Подходят Excel, PDF, картинки и другие входящие от поставщика."}</span>
+            <label class="upload-dropzone">
+              <input class="upload-dropzone-input-hidden" type="file" multiple data-change="setUploadDraftFiles" />
+              <strong>Перетащите прайсы и любые вложения сюда</strong>
+              <span>Подходят Excel, PDF, картинки и другие входящие от поставщика.</span>
             </label>
-            ${
-              draft.files?.length && !isSubmitting
-                ? `
-                    <div class="upload-file-list">
-                      ${draft.files
-                        .map(
-                          (file, idx) => `
-                            <div class="upload-file-pill" style="display: flex; justify-content: space-between; align-items: center;">
-                              <div>
-                                <strong>${escapeHtml(file.name)}</strong>
-                                <span>${escapeHtml(String(file.type || "file"))} · ${escapeHtml(String(Math.round((file.size || 0) / 1024)))} КБ</span>
-                              </div>
-                              <button class="ghost-btn icon-action-btn table-danger-btn" style="padding: 4px; min-width: unset; height: unset;" data-action="removeUploadDraftFile" data-index="${idx}" title="Удалить файл">🗑️</button>
-                            </div>
-                          `,
-                        )
-                        .join("")}
+            ${draft.files?.length ? `
+              <div class="upload-file-list">
+                ${draft.files.map((file, idx) => `
+                  <div class="upload-file-pill" style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                      <strong>${escapeHtml(file.name)}</strong>
+                      <span>${escapeHtml(String(file.type || "file"))} · ${Math.round((file.size || 0) / 1024)} КБ</span>
                     </div>
-                    ${importRef ? `<div class="upload-import-ref-row"><span class="pill">Номер импорта: <strong>${escapeHtml(importRef)}</strong></span></div>` : ""}
-                  `
-                : ""
-            }
-            ${
-              isSubmitting
-                ? `
-                    <div class="upload-progress-inline">
-                      <div class="upload-progress-header">
-                        <span>${total > 1 ? `Файл ${completed + 1} из ${total}` : "Отправка файла на сервер..."}</span>
-                        <span>${uploadProgress}%</span>
-                      </div>
-                      <div class="upload-progress-bar upload-progress-bar-active">
-                        <span style="width: ${Math.max(4, Math.min(uploadProgress, 100))}%"></span>
-                      </div>
-                    </div>
-                  `
-                : ""
-            }
+                    <button class="ghost-btn icon-action-btn table-danger-btn" style="padding:4px;min-width:unset;height:unset;" data-action="removeUploadDraftFile" data-index="${idx}" title="Удалить файл">🗑️</button>
+                  </div>
+                `).join("")}
+              </div>
+            ` : ""}
           </div>
         </div>
 
         <div class="form-stack" style="margin-bottom:16px;">
           <label class="field-label">Комментарий к импорту</label>
-          <textarea class="input textarea compact-textarea" placeholder="Укажите важные детали или комментарии для себя..." data-input="setUploadDraftField" data-field="managerNote" ${isSubmitting ? "disabled" : ""}>${escapeHtml(draft.managerNote || "")}</textarea>
+          <textarea class="input textarea compact-textarea" placeholder="Укажите важные детали или комментарии для себя..." data-input="setUploadDraftField" data-field="managerNote">${escapeHtml(draft.managerNote || "")}</textarea>
         </div>
 
         ${importsResource.error ? `<div class="hint hint-error">Не удалось создать импорт: ${escapeHtml(importsResource.error)}</div>` : ""}
         <div class="toolbar-actions justify-end">
-          ${isSubmitting ? "" : `<button class="ghost-btn" data-action="closeModal">Отмена</button>`}
-          <button class="primary-btn" data-action="createImportsFromUpload" ${isSubmitting || !draft.files?.length ? "disabled" : ""} style="display:flex; align-items:center; gap:8px; min-width: 160px; justify-content: center;">
-            ${isSubmitting
-              ? `<div class="boot-loader" style="width:14px;height:14px;border-width:2px;flex-shrink:0;"></div> Загружается...`
-              : "Создать импорт"
-            }
+          <button class="ghost-btn" data-action="closeModal">Отмена</button>
+          <button class="primary-btn" data-action="createImportsFromUpload" ${!draft.files?.length ? "disabled" : ""} style="min-width:160px;justify-content:center;">
+            Создать импорт
           </button>
         </div>
       </div>
