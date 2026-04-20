@@ -369,6 +369,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                     "size_bytes": len(raw_bytes),
                     "storage_path": str(storage_path),
                     "file_kind": "price" if name == "file" else "attachment",
+                    "raw_bytes": raw_bytes,
                 })
             else:
                 payload[name] = part.get_payload(decode=True).decode("utf-8")
@@ -911,9 +912,10 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                       file_kind,
                       note,
                       processing_status,
-                      processing_pipeline
+                      processing_pipeline,
+                      file_bytes
                     )
-                    values (%s, %s, %s, %s, %s, %s, %s, 'uploaded', %s)
+                    values (%s, %s, %s, %s, %s, %s, %s, 'uploaded', %s, %s)
                     """,
                     (
                         import_id,
@@ -924,6 +926,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                         file.get("file_kind", "price"),
                         file.get("note"),
                         infer_pipeline(infer_source_format(original_name or "", file.get("mime_type"))),
+                        file.get("raw_bytes"),
                     ),
                 )
 
@@ -976,7 +979,28 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         try:
             headers = {"User-Agent": "bahus-API/1.0"}
 
-            if file_info and file_info.get("path") and os.path.exists(file_info["path"]):
+            db_file_bytes = None
+            if file_info:
+                # Always prefer pulling the actual bytes from the database since local storage is ephemeral
+                # Import_file_id is stored at the root of dispatch_payload or inside file_binary
+                import_file_id = dispatch_payload.get("import_file_id") or file_info.get("import_file_id")
+                if import_file_id:
+                    with self.db() as conn:
+                        row = conn.execute("select file_bytes from import_file where id = %s", (import_file_id,)).fetchone()
+                        if row and row["file_bytes"]:
+                            db_file_bytes = bytes(row["file_bytes"])
+
+            if file_info and db_file_bytes:
+                filename = file_info["filename"]
+                mime_type = file_info.get("mime_type", "application/octet-stream")
+                response = requests.post(
+                    self.config.n8n_webhook_url,
+                    data=data,
+                    files={"file": (filename, db_file_bytes, mime_type)},
+                    headers=headers,
+                    timeout=45,
+                )
+            elif file_info and file_info.get("path") and os.path.exists(file_info["path"]):
                 filename = file_info["filename"]
                 mime_type = file_info.get("mime_type", "application/octet-stream")
                 with open(file_info["path"], "rb") as fh:
@@ -985,7 +1009,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                         data=data,
                         files={"file": (filename, fh, mime_type)},
                         headers=headers,
-                        timeout=30,
+                        timeout=45,
                     )
             else:
                 response = requests.post(
@@ -1808,7 +1832,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
 
 
 def cleanup_worker():
-    """Background thread to delete files in UPLOADS_DIR older than 7 days."""
+    """Background thread to delete files in UPLOADS_DIR and Postgres bytea older than 7 days."""
     logger.info("Cleanup thread started.")
     while True:
         try:
@@ -1824,7 +1848,21 @@ def cleanup_worker():
                                 deleted_count += 1
                         except Exception as e:
                             logger.error(f"Failed to delete old file {f}: {e}")
+            
+            # Also clean up Postgres file_bytes
+            import psycopg
+            try:
+                with psycopg.connect(PostgresApiHandler.config.db_url) as conn:
+                    # Clear out bytes for old files to reclaim space
+                    res = conn.execute("UPDATE import_file SET file_bytes = NULL, cleanup_done = TRUE WHERE uploaded_at < NOW() - INTERVAL '7 days' AND cleanup_done = FALSE")
+                    if res.rowcount > 0:
+                        logger.info(f"Cleanup thread: cleared file_bytes for {res.rowcount} old DB records.")
+                    conn.commit()
+            except Exception as db_e:
+                logger.error(f"Failed to clean up db file_bytes: {db_e}")
+
             if deleted_count > 0:
+
                 logger.info(f"Cleanup thread: deleted {deleted_count} files older than 7 days.")
         except Exception as e:
             logger.error(f"Error in cleanup thread: {e}")
@@ -1838,7 +1876,19 @@ def main() -> None:
     server = ThreadingHTTPServer((args.host, args.port), PostgresApiHandler)
     logger.info(f"bahus PostgreSQL API running at http://{args.host}:{args.port}")
     
+    # Run inline migration
+    try:
+        import psycopg
+        with psycopg.connect(PostgresApiHandler.config.db_url) as conn:
+            conn.execute("ALTER TABLE import_file ADD COLUMN IF NOT EXISTS file_bytes BYTEA;")
+            conn.execute("ALTER TABLE import_file ADD COLUMN IF NOT EXISTS cleanup_done BOOLEAN DEFAULT FALSE;")
+            conn.commit()
+            logger.info("Database schema check passed (file_bytes added).")
+    except Exception as e:
+        logger.error(f"Failed to run schema migration: {e}")
+
     # Start the background cleanup thread
+
     cleanup_thread = threading.Thread(target=cleanup_worker, daemon=True)
     cleanup_thread.start()
 
