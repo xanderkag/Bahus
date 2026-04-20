@@ -948,12 +948,13 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         source_file = dispatch_payload.get("source_file") or "-"
 
         data = {k: v for k, v in dispatch_payload.items() if k != "file_binary"}
-        file_info = dispatch_payload.get("file_binary")
+file_info = dispatch_payload.get("file_binary")
 
         n8n_logger.info(
             f"[N8N] DISPATCH → url={self.config.n8n_webhook_url} "
             f"correlation_id={correlation_id} job_id={job_id} "
-            f"target={import_id} pipeline={pipeline} file={source_file}"
+            f"target={import_id} pipeline={pipeline} file={source_file} "
+            f"file_info={file_info} exists={os.path.exists(file_info['path']) if file_info and file_info.get('path') else False}"
         )
 
         t_start = time.monotonic()
