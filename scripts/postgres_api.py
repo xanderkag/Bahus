@@ -1192,11 +1192,12 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                     conn_bg.commit()
                 n8n_logger.info(f"[AI] DONE import_id={import_id} status={status} rows={len(rows or [])} error={error}")
             except Exception as exc:
+                err_msg = str(exc)
                 n8n_logger.error(f"[AI] ERROR import_id={import_id}\n{traceback.format_exc()}")
                 with self.db() as conn_err:
                     conn_err.execute(
-                        "update import_batch set status='error', processing_status='failed', updated_at=now() where id=%s",
-                        (import_id,),
+                        "update import_batch set status='error', processing_status='failed', updated_at=now(), meta = jsonb_set(coalesce(meta, '{}'::jsonb), '{error}', %s) where id=%s",
+                        (json.dumps(err_msg), import_id,),
                     )
                     conn_err.execute(
                         "update job_run set status='failed', finished_at=now() where id=%s", (job_id,)
