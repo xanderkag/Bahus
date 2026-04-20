@@ -631,7 +631,11 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
 
         return {
             "id": import_id,
-            "created_at": batch_row["created_at"].isoformat() if "created_at" in batch_row and batch_row["created_at"] else batch_row["import_date"],
+            "created_at": (
+                batch_row["created_at"].replace(tzinfo=__import__('datetime').timezone.utc).isoformat()
+                if "created_at" in batch_row and batch_row["created_at"]
+                else (batch_row.get("import_date") or "")
+            ),
             "meta": {
                 "source_file": price_file["file_name"] if price_file else None,
                 "source_format": batch_row["source_format"] or (price_file["source_format"] if price_file else None),
@@ -740,6 +744,8 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
               ib.period,
               ib.sheet_name,
               ib.import_date,
+              ib.created_at,
+              ib.updated_at,
               ib.request_ref,
               ib.request_title,
               ib.manager_note,
@@ -752,7 +758,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             join supplier s on s.id = ib.supplier_id
             left join app_user owner on owner.id = ib.owner_user_id
             left join app_user created_by on created_by.id = ib.created_by_user_id
-            order by ib.import_date desc nulls last, ib.created_at desc
+            order by ib.created_at desc nulls last, ib.import_date desc
             """
         ).fetchall()
         return [self.serialize_import(conn, row) for row in batch_rows]
