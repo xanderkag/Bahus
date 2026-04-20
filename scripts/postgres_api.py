@@ -624,13 +624,24 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
     def serialize_import(self, conn, batch_row: dict) -> dict:
         import_id = str(batch_row["id"])
         files = self.load_import_files(conn, import_id)
-        rows = self.load_import_rows(conn, import_id)
+        # Шаг 5: COUNT вместо загрузки всех строк — намного дешевле при листинге
+        row_count = conn.execute(
+            "select count(*) as cnt from import_row where import_batch_id = %s",
+            (import_id,)
+        ).fetchone()["cnt"]
         issues = self.load_import_issues(conn, import_id)
         price_file = next((item for item in files if item["file_kind"] == "price"), files[0] if files else None)
         attachments = [item for item in files if item["file_kind"] != "price"]
 
+        # Шаг 6: Унифицированный статус — если есть строки, ставим parsed
+        derived_status = batch_row["processing_status"] or batch_row["status"] or "uploaded"
+        if row_count > 0 and derived_status not in ("parsed", "partial"):
+            derived_status = "parsed"
+
         return {
             "id": import_id,
+            # Шаг 7: supplier_id в корне для удобного маппинга на фронте
+            "supplier_id": str(batch_row["supplier_id"]),
             "created_at": (
                 batch_row["created_at"].replace(tzinfo=__import__('datetime').timezone.utc).isoformat()
                 if "created_at" in batch_row and batch_row["created_at"]
@@ -661,11 +672,9 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             "created_by": batch_row["created_by_email"],
             "source": batch_row["source"],
             "owner": batch_row["owner_email"],
-            "status": (
-                "parsed"
-                if rows and (batch_row["processing_status"] or batch_row["status"]) not in ("parsed", "partial")
-                else (batch_row["processing_status"] or batch_row["status"])
-            ),
+            "processing_status": derived_status,
+            "status": derived_status,
+            "row_count": row_count,
             "errors": [
                 {
                     "row_index": issue["row_index"],
@@ -686,8 +695,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 for issue in issues
                 if issue["severity"] != "error"
             ],
-            "products": rows,
-            "row_count": len(rows),
+            # products убраны из листинга — загружаются отдельно через /api/products
         }
 
     def handle_bootstrap(self) -> None:
@@ -833,19 +841,20 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 return self.respond_json({"error": "Import not found", "import_id": import_id}, status=HTTPStatus.NOT_FOUND)
             files = self.load_import_files(conn, import_id)
 
-            # If rows exist in DB → treat as parsed regardless of stored status
-            # (handles race condition where callback was lost but data was written)
             row_count = conn.execute(
                 "select count(*) as cnt from import_row where import_batch_id = %s",
                 (import_id,)
             ).fetchone()["cnt"]
-            derived_status = batch_row["processing_status"] or batch_row["status"]
+            # Шаг 6/7: унифицированный статус с авто-апгрейдом при наличии строк
+            derived_status = batch_row["processing_status"] or batch_row["status"] or "uploaded"
             if row_count > 0 and derived_status not in ("parsed", "partial"):
                 derived_status = "parsed"
 
             status = {
                 "id": import_id,
                 "status": derived_status,
+                "processing_status": derived_status,
+                "row_count": row_count,
                 "processing_started_at": batch_row["processing_started_at"],
                 "processing_finished_at": batch_row["processing_finished_at"],
                 "last_webhook_at": batch_row["last_webhook_at"],

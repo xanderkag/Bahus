@@ -138,22 +138,24 @@ async function main() {
     }
   }
 
-  function shouldPollImportStatus(state) {
+  function getProcessingImportIds(state) {
+    const processingStatuses = new Set(["queued", "pending", "processing"]);
+    return (state.entities.importOrder || []).filter(
+      (id) => processingStatuses.has(state.entities.importsById[id]?.status)
+    );
+  }
+
+  function shouldPollImports(state) {
     if (state.runtime?.dataSource !== "local-api") return false;
-    if (state.ui.activeView !== "overview") return false;
-    // Pause polling while an upload modal is open to prevent DOM destruction during OS file picker
+    // Don't poll while file picker is open (prevents DOM destruction)
     if (state.ui.modal === "upload-files") return false;
-    // Pause polling only while an active file upload is in progress
+    // Don't poll while an upload is in progress
     if (state.runtime?.resources?.imports?.status === "saving") return false;
-    const importId = state.ui.selectedImportId;
-    if (!importId) return false;
-    const status = state.entities.importsById[importId]?.status;
-    // poll while backend/n8n is actively working on the file
-    return ["queued", "pending", "processing"].includes(status);
+    return getProcessingImportIds(state).length > 0;
   }
 
   function syncImportStatusPolling(state) {
-    if (!shouldPollImportStatus(state)) {
+    if (!shouldPollImports(state)) {
       stopImportStatusPolling();
       return;
     }
@@ -162,7 +164,12 @@ async function main() {
       if (pollingInFlight) return;
       pollingInFlight = true;
       try {
-        await actions.refreshSelectedImportStatus();
+        const processingIds = getProcessingImportIds(store.getState());
+        if (!processingIds.length) {
+          stopImportStatusPolling();
+          return;
+        }
+        await Promise.all(processingIds.map((id) => actions.refreshSelectedImportStatus(id)));
       } finally {
         pollingInFlight = false;
       }

@@ -86,7 +86,8 @@ function mapApiImportToEntity(item) {
     created_at: item.created_at || null,
     owner: item.owner,
     source: item.source,
-    status: item.status || "uploaded",
+    status: item.processing_status || item.status || "uploaded",
+    row_count: item.row_count ?? 0,
     meta: item.meta || {},
     product_ids: Array.isArray(item.product_ids) ? item.product_ids : [],
     issue_ids: Array.isArray(item.issue_ids) ? item.issue_ids : [],
@@ -207,12 +208,14 @@ export function createActions(store, backend = null) {
               ...state.entities.importsById,
               [importId]: {
                 ...currentImport,
-                status: status.status || currentImport.status,
+                status: status.processing_status || status.status || currentImport.status,
+                row_count: status.row_count ?? currentImport.row_count ?? 0,
                 meta: {
                   ...currentImport.meta,
                   processing_started_at: status.processing_started_at || null,
                   processing_finished_at: status.processing_finished_at || null,
                   last_webhook_at: status.last_webhook_at || null,
+                  last_error: status.files?.[0]?.last_error || currentImport.meta?.last_error || null,
                   attachments: status.files?.filter((file) => file.file_kind !== "price") || currentImport.meta.attachments || [],
                 },
               },
@@ -1904,17 +1907,16 @@ export function createActions(store, backend = null) {
         await backend.dispatchImport(importId, { source: "ui", force: true });
         await Promise.all([
           loadImportsResource(),
-          loadImportStatusResource(importId)
+          loadImportStatusResource(importId),
         ]);
-        const importRecord = state.entities.importsById[importId];
-        const fileName = importRecord?.meta?.source_file || "выбранный файл";
-        const supplierName = state.entities.suppliersById[importRecord?.supplier_id]?.name || "Неизвестный поставщик";
-        const note = importRecord?.meta?.manager_note ? ` (Примечание: ${importRecord.meta.manager_note})` : "";
-        alert(`Запрос отправлен в n8n:\nПоставщик: ${supplierName}\nФайл: ${fileName}${note}`);
+        setResourceState("imports", {
+          status: "done",
+          error: null,
+          lastDispatchedId: importId,
+        });
       } catch (err) {
-        console.error("Failed to dispatch import to N8N", err);
+        console.error("Failed to dispatch import", err);
         setResourceState("imports", { status: "error", error: err.message });
-        alert(`Ошибка отправки: ${err.message}`);
       }
     },
 
@@ -2145,22 +2147,23 @@ export function createActions(store, backend = null) {
       await Promise.all(promises);
       await loadImportStatusResource(store.getState().ui.selectedImportId);
     },
-    async refreshSelectedImportStatus() {
+    async refreshSelectedImportStatus(importId) {
       const currentState = store.getState();
       if (currentState.runtime?.dataSource !== "local-api") return null;
-      const importId = currentState.ui.selectedImportId;
-      if (!importId) return null;
+      // Default to selectedImportId for backward compatibility
+      const id = importId || currentState.ui.selectedImportId;
+      if (!id) return null;
 
-      const beforeStatus = currentState.entities.importsById[importId]?.status;
-      const status = await loadImportStatusResource(importId);
-      const nextStatus = status?.status;
+      const beforeStatus = currentState.entities.importsById[id]?.status;
+      const status = await loadImportStatusResource(id);
+      const nextStatus = status?.processing_status || status?.status;
 
       if (!nextStatus) return null;
 
       if (nextStatus !== beforeStatus || !isImportProcessing(nextStatus)) {
         await Promise.all([
           loadImportsResource(),
-          loadProductsResource(importId),
+          loadProductsResource(id),
           loadJobsResource(),
         ]);
       }
