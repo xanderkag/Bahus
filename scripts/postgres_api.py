@@ -1211,14 +1211,20 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             f"avg_chars/page={avg_chars:.0f} price_patterns={len(price_numbers)}"
         )
 
-        # Smart heuristic: need both enough text AND product-like data (prices/numbers)
-        has_rich_text = avg_chars > 200  # at least 200 chars/page average
-        has_price_data = len(price_numbers) > 5  # at least 5 price-like numbers
+        # Smart heuristic:
+        # 1. Short PDFs (≤5 pages) → always Vision (more accurate, cheap enough)
+        # 2. Long PDFs with rich text + price data → text mode (fast, handles 100+ rows)
+        # 3. Everything else → Vision
+        if len(doc) <= 5:
+            n8n_logger.info(f"[AI] Short PDF ({len(doc)} pages) → Vision mode for maximum accuracy")
+        else:
+            has_rich_text = avg_chars > 200
+            has_price_data = len(price_numbers) > 5
+            if has_rich_text and has_price_data:
+                full_text = "\n\n--- PAGE BREAK ---\n\n".join(pages_text)
+                doc.close()
+                return ("text", full_text)
 
-        if has_rich_text and has_price_data:
-            full_text = "\n\n--- PAGE BREAK ---\n\n".join(pages_text)
-            doc.close()
-            return ("text", full_text)
 
 
         # Scanned PDF — render pages as images
