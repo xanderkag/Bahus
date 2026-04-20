@@ -1267,7 +1267,27 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             if not a_resp.ok:
                 n8n_logger.warning(f"[AI] Assistants API create failed ({a_resp.status_code}): {a_resp.text[:200]}")
                 raise ValueError(f"Assistants create failed: {a_resp.status_code}")
-            assistant_id = a_resp.json()["id"]
+            a_data = a_resp.json()
+            assistant_id = a_data["id"]
+
+            # Wait for vector store to process large PDFs
+            try:
+                vs_ids = a_data.get("tool_resources", {}).get("file_search", {}).get("vector_store_ids", [])
+                if vs_ids:
+                    vs_id = vs_ids[0]
+                    vs_attempts = 0
+                    while vs_attempts < 20:
+                        vs_poll = requests.get(f"https://api.openai.com/v1/vector_stores/{vs_id}", headers=assistants_header, timeout=30)
+                        if vs_poll.ok:
+                            vs_status = vs_poll.json().get("status")
+                            if vs_status == "completed":
+                                break
+                            elif vs_status in ("failed", "cancelled"):
+                                raise ValueError("Vector store failed to process PDF")
+                        time.sleep(2)
+                        vs_attempts += 1
+            except Exception as e:
+                n8n_logger.warning(f"[AI] Vector store polling error: {e}")
 
             # 2b. Create thread + run
             run_resp = requests.post(
