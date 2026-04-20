@@ -118,6 +118,7 @@ class AppConfig:
     n8n_webhook_url: str | None
     public_file_base_url: str | None
     default_user_email: str
+    openai_api_key: str | None
 
 
 # --- PROTOTYPE DEFAULTS (override via env vars in production) ---
@@ -135,6 +136,7 @@ def build_config() -> AppConfig:
         n8n_webhook_url=os.getenv("N8N_IMPORT_WEBHOOK_URL", _N8N_WEBHOOK_URL_DEFAULT),
         public_file_base_url=os.getenv("PUBLIC_FILE_BASE_URL"),
         default_user_email=os.getenv("DEFAULT_MANAGER_EMAIL", "manager@bahus"),
+        openai_api_key=os.getenv("OPENAI_API_KEY"),
     )
 
 
@@ -948,13 +950,13 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
 
             conn.commit()
 
-        # _trigger_n8n_import_dispatch already runs dispatch in its own daemon thread
+        # Run PDF extraction directly (no n8n needed)
         try:
-            n8n_logger.info(f"[N8N] AUTO-DISPATCH queued for import_id={import_id}")
+            n8n_logger.info(f"[AI] AUTO-DISPATCH queued for import_id={import_id}")
             self._trigger_n8n_import_dispatch(import_id, force=True)
         except Exception:
             logger.error(f"Auto-dispatch failed for import_id={import_id}:\n{traceback.format_exc()}")
-            n8n_logger.error(f"[N8N] AUTO-DISPATCH FAILED import_id={import_id}\n{traceback.format_exc()}")
+            n8n_logger.error(f"[AI] AUTO-DISPATCH FAILED import_id={import_id}\n{traceback.format_exc()}")
 
 
 
@@ -1057,6 +1059,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             return None
 
     def _trigger_n8n_import_dispatch(self, import_id: str, force: bool = False) -> dict:
+        """Start local OpenAI processing in a background thread (n8n removed)."""
         with self.db() as conn:
             batch_row = self.require_import(conn, import_id)
             if batch_row is None:
@@ -1070,7 +1073,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 ).fetchone()["cnt"]
                 if existing_rows > 0:
                     n8n_logger.info(
-                        f"[N8N] SKIP import_id={import_id} — already has {existing_rows} rows, skipping dispatch"
+                        f"[AI] SKIP import_id={import_id} — already has {existing_rows} rows"
                     )
                     return {"import_id": import_id, "skipped": True, "reason": "already_processed"}
 
@@ -1080,59 +1083,20 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 raise ValueError("Price file not found")
 
             default_user_id = self.get_default_user_id(conn)
-            correlation_id = str(uuid.uuid4())
-            dispatch_payload = {
-                "import_batch_id": import_id,
-                "import_file_id": price_file["id"],
-                "file_kind": price_file["file_kind"],
-                "mime_type": price_file["mime_type"],
-                "storage_path": price_file["storage_path"],
-                "source_file": price_file["file_name"],
-                "requested_pipeline": price_file["processing_pipeline"] or infer_pipeline(price_file["source_format"]),
-                "force": force,
-                "correlation_id": correlation_id,
-                "callbackSuccessUrl": f"{os.getenv('PUBLIC_API_URL', _PUBLIC_API_URL_DEFAULT)}/api/webhooks/n8n/import-result",
-                "callbackFailedUrl": f"{os.getenv('PUBLIC_API_URL', _PUBLIC_API_URL_DEFAULT)}/api/webhooks/n8n/import-failed",
-                "file_binary": {
-                    "path": price_file["storage_path"],
-                    "filename": price_file["file_name"],
-                    "mime_type": price_file["mime_type"],
-                },
-            }
-            job_row = conn.execute(
-                """
-                insert into job_run (
-                  type,
-                  target_type,
-                  target_id,
-                  status,
-                  payload,
-                  created_by_user_id
-                )
-                values (
-                  'import_parse',
-                  'import_batch',
-                  %s,
-                  'queued',
-                  %s::jsonb,
-                  %s
-                )
-                returning id
-                """,
-                (import_id, json.dumps(dispatch_payload, ensure_ascii=False, default=json_default), default_user_id),
-            ).fetchone()
-            job_id = str(job_row["id"])
-            dispatch_payload["job_id"] = job_id
+            job_id = str(uuid.uuid4())
 
             conn.execute(
                 """
+                insert into job_run (id, type, target_type, target_id, status, payload, created_by_user_id)
+                values (%s, 'import_parse', 'import_batch', %s, 'queued', '{}'::jsonb, %s)
+                """,
+                (job_id, import_id, default_user_id),
+            )
+            conn.execute(
+                """
                 update import_batch
-                set
-                  status = 'queued',
-                  processing_status = 'queued',
-                  processing_started_at = now(),
-                  processing_finished_at = null,
-                  updated_at = now()
+                set status = 'queued', processing_status = 'queued',
+                    processing_started_at = now(), processing_finished_at = null, updated_at = now()
                 where id = %s
                 """,
                 (import_id,),
@@ -1140,60 +1104,210 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             conn.execute(
                 """
                 update import_file
-                set
-                  processing_status = case when file_kind = 'price' then 'queued' else processing_status end,
-                  dispatch_payload = %s::jsonb
+                set processing_status = case when file_kind = 'price' then 'queued' else processing_status end
                 where import_batch_id = %s
                 """,
-                (json.dumps(dispatch_payload, ensure_ascii=False, default=json_default), import_id),
+                (import_id,),
             )
             conn.commit()
 
-        if self.config.n8n_webhook_url:
-            def run_dispatch():
-                try:
-                    res = self.dispatch_to_n8n(dispatch_payload)
-                    if not res:
-                        n8n_logger.error(
-                            f"[N8N] DISPATCH_FAILED import_id={import_id} "
-                            f"correlation_id={correlation_id} job_id={job_id} — "
-                            "n8n returned empty or error response"
-                        )
-                        with self.db() as conn_bg:
-                            conn_bg.execute(
-                                "update job_run set status = 'error', "
-                                "payload = payload || '{\"error\": \"n8n webhook dispatch failed\"}'::jsonb "
-                                "where id = %s",
-                                (job_id,),
-                            )
-                            conn_bg.execute(
-                                "update import_batch set status = 'error', processing_status = 'failed' where id = %s",
-                                (import_id,),
-                            )
-                            conn_bg.commit()
-                except Exception as error:
-                    n8n_logger.error(
-                        f"[N8N] DISPATCH_EXCEPTION import_id={import_id} "
-                        f"correlation_id={correlation_id} job_id={job_id} error={error}"
+            # Grab file bytes from DB (persistent storage, does not depend on disk)
+            file_id = str(price_file["id"])
+            file_bytes_row = conn.execute(
+                "select file_bytes, original_name, mime_type from import_file where id = %s",
+                (file_id,)
+            ).fetchone()
+
+        def run_local():
+            try:
+                n8n_logger.info(f"[AI] Processing import_id={import_id} job_id={job_id}")
+                rows, error = self._openai_extract_rows(
+                    file_bytes=bytes(file_bytes_row["file_bytes"]) if file_bytes_row and file_bytes_row["file_bytes"] else None,
+                    filename=file_bytes_row["original_name"] if file_bytes_row else price_file.get("file_name", "file.pdf"),
+                    mime_type=file_bytes_row["mime_type"] if file_bytes_row else price_file.get("mime_type", "application/pdf"),
+                )
+                status = "parsed" if (rows and not error) else "failed"
+                with self.db() as conn_bg:
+                    conn_bg.execute(
+                        "update job_run set status=%s, finished_at=now(), updated_at=now() where id=%s",
+                        ("done" if status == "parsed" else "error", job_id),
                     )
-                    with self.db() as conn_bg:
+                    conn_bg.execute(
+                        """
+                        update import_batch set status=%s, processing_status=%s,
+                            processing_finished_at=now(), last_webhook_at=now(), updated_at=now()
+                        where id=%s
+                        """,
+                        (status, status, import_id),
+                    )
+                    conn_bg.execute(
+                        "update import_file set processing_status=%s, last_error=%s where id=%s",
+                        (status, error, file_id),
+                    )
+                    conn_bg.execute("delete from import_row where import_batch_id=%s", (import_id,))
+                    for index, row in enumerate(rows or []):
                         conn_bg.execute(
-                            "update job_run set status = 'error', payload = payload || %s::jsonb where id = %s",
-                            (json.dumps({"error": str(error)}), job_id),
+                            """
+                            insert into import_row (
+                              import_batch_id, row_index, raw_name, normalized_name,
+                              category, country, volume_l, purchase_price, promo, raw_payload
+                            ) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)
+                            """,
+                            (
+                                import_id, index + 1,
+                                row.get("name") or row.get("raw_name") or f"Строка {index+1}",
+                                row.get("normalized_name") or row.get("name"),
+                                row.get("category"),
+                                row.get("country"),
+                                row.get("volume_l"),
+                                row.get("purchase_price"),
+                                bool(row.get("promo", False)),
+                                json.dumps(row, ensure_ascii=False, default=json_default),
+                            ),
                         )
-                        conn_bg.execute(
-                            "update import_batch set status = 'error', processing_status = 'failed' where id = %s",
-                            (import_id,),
-                        )
-                        conn_bg.commit()
+                    conn_bg.commit()
+                n8n_logger.info(f"[AI] DONE import_id={import_id} status={status} rows={len(rows or [])} error={error}")
+            except Exception as exc:
+                n8n_logger.error(f"[AI] ERROR import_id={import_id}\n{traceback.format_exc()}")
+                with self.db() as conn_err:
+                    conn_err.execute(
+                        "update import_batch set status='error', processing_status='failed', updated_at=now() where id=%s",
+                        (import_id,),
+                    )
+                    conn_err.execute(
+                        "update job_run set status='error', finished_at=now() where id=%s", (job_id,)
+                    )
+                    conn_err.commit()
 
-            threading.Thread(target=run_dispatch, daemon=True).start()
+        threading.Thread(target=run_local, daemon=True).start()
+        return {"import_id": import_id, "job_id": job_id, "status": "queued"}
 
-        return {
-            "import_id": import_id,
-            "job_id": job_id,
-            "status": "queued",
+    def _openai_extract_rows(self, file_bytes: bytes | None, filename: str, mime_type: str) -> tuple[list[dict], str | None]:
+        """Upload file to OpenAI and extract product rows via Assistants API."""
+        api_key = self.config.openai_api_key
+        if not api_key:
+            return [], "OPENAI_API_KEY is not configured on the backend"
+        if not file_bytes:
+            return [], "File bytes not found in database — re-upload the file"
+
+        n8n_logger.info(f"[AI] Uploading {filename} ({len(file_bytes)} bytes) to OpenAI Files API")
+        headers_auth = {"Authorization": f"Bearer {api_key}"}
+
+        # 1. Upload file
+        upload_resp = requests.post(
+            "https://api.openai.com/v1/files",
+            headers=headers_auth,
+            files={"file": (filename, file_bytes, mime_type)},
+            data={"purpose": "assistants"},
+            timeout=120,
+        )
+        if not upload_resp.ok:
+            return [], f"OpenAI file upload failed: {upload_resp.text[:400]}"
+        file_id = upload_resp.json()["id"]
+        n8n_logger.info(f"[AI] File uploaded: file_id={file_id}")
+
+        headers = {
+            **headers_auth,
+            "OpenAI-Beta": "assistants=v2",
+            "Content-Type": "application/json",
         }
+        prompt = (
+            "You are a master data extractor. Extract ALL product rows from this price list. "
+            "Output ONLY a valid JSON object (no markdown, no fences): "
+            '{"rows": [{"name":"...","article":"...","qty":1,"purchase_price":100,'
+            '"volume_l":0.75,"country":"...","category":"...","note":"...","promo":false}]} '
+            "If a field value is unknown use null."
+        )
+        assistant_id = None
+        try:
+            # 2. Create assistant
+            a_resp = requests.post(
+                "https://api.openai.com/v1/assistants",
+                headers=headers,
+                json={
+                    "name": "BahusExtractorTemp",
+                    "model": "gpt-4o",
+                    "instructions": prompt,
+                    "tools": [{"type": "file_search"}],
+                    "tool_resources": {"file_search": {"vector_stores": [{"file_ids": [file_id]}]}},
+                },
+                timeout=60,
+            )
+            if not a_resp.ok:
+                return [], f"Create assistant failed: {a_resp.text[:400]}"
+            assistant_id = a_resp.json()["id"]
+            n8n_logger.info(f"[AI] Assistant created: {assistant_id}")
+
+            # 3. Create thread + run
+            run_resp = requests.post(
+                "https://api.openai.com/v1/threads/runs",
+                headers=headers,
+                json={
+                    "assistant_id": assistant_id,
+                    "thread": {"messages": [{"role": "user", "content": "Extract all product rows. Return ONLY JSON."}]},
+                    "response_format": {"type": "json_object"},
+                },
+                timeout=60,
+            )
+            if not run_resp.ok:
+                return [], f"Create run failed: {run_resp.text[:400]}"
+            run_data = run_resp.json()
+            thread_id = run_data["thread_id"]
+            run_id = run_data["id"]
+            status = run_data["status"]
+            n8n_logger.info(f"[AI] Run started: thread={thread_id} run={run_id} status={status}")
+
+            # 4. Poll (max 90 × 3s ≈ 4.5 min)
+            attempts = 0
+            while status in ("queued", "in_progress") and attempts < 90:
+                time.sleep(3)
+                attempts += 1
+                p = requests.get(
+                    f"https://api.openai.com/v1/threads/{thread_id}/runs/{run_id}",
+                    headers=headers,
+                    timeout=30,
+                )
+                pj = p.json()
+                status = pj["status"]
+                if status in ("failed", "cancelled", "expired"):
+                    err = pj.get("last_error") or {}
+                    return [], f"Run {status}: {json.dumps(err)}"
+
+            if status != "completed":
+                return [], f"Timed out after {attempts} polls, status={status}"
+
+            # 5. Get reply
+            msg_resp = requests.get(
+                f"https://api.openai.com/v1/threads/{thread_id}/messages",
+                headers=headers,
+                timeout=30,
+            )
+            msgs = msg_resp.json()
+            block = next(
+                (b for b in (msgs["data"][0]["content"] if msgs.get("data") else [])
+                 if b.get("type") == "text"),
+                None,
+            )
+            raw_text = block["text"]["value"] if block else '{"rows":[]}'
+            n8n_logger.info(f"[AI] Reply received, length={len(raw_text)}")
+
+            parsed = json.loads(raw_text)
+            rows = parsed if isinstance(parsed, list) else (parsed.get("rows") or [])
+            return rows, None
+
+        except Exception as exc:
+            return [], f"OpenAI processing error: {exc}"
+        finally:
+            # Cleanup: delete assistant and file
+            if assistant_id:
+                try:
+                    requests.delete(f"https://api.openai.com/v1/assistants/{assistant_id}", headers=headers, timeout=15)
+                except Exception:
+                    pass
+            try:
+                requests.delete(f"https://api.openai.com/v1/files/{file_id}", headers=headers_auth, timeout=15)
+            except Exception:
+                pass
 
     def handle_dispatch_import(self, import_id: str) -> None:
         payload = self.read_json_body()
