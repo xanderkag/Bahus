@@ -264,15 +264,13 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             return self.handle_dispatch_import(route.split("/")[3])
         if route == "/api/debug/test":
             try:
-                import os
-                with self.db() as conn:
-                    rows = conn.execute("select id, original_name, size_bytes, storage_path from import_file order by uploaded_at desc limit 2").fetchall()
-                    db_files = [dict(r) for r in rows]
-                
-                return self.respond_json({"db": db_files})
+                pf = PROJECT_ROOT / ".local" / "logs" / "n8n.log"
+                log_content = pf.read_text()[-4000:] if pf.exists() else "NOT FOUND"
+                return self.respond_json({"logs": log_content})
             except Exception as e:
                 import traceback
                 return self.respond_json({"error": str(e), "trace": traceback.format_exc()})
+
 
 
 
