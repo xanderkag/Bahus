@@ -200,8 +200,34 @@ async function main() {
       } catch (e) {}
     }
 
+    // Save scroll positions for all scrollable containers
+    const scrollSelectors = [
+      ".main",
+      ".overview-imports-table",
+      ".overview-table-wrap",
+      ".table-wrap.compact-table",
+      ".overview-products-panel .table-wrap",
+      ".quote-items-panel .table-wrap",
+    ];
+    const savedScrolls = [];
+    for (const sel of scrollSelectors) {
+      const el = root.querySelector(sel);
+      if (el && el.scrollTop > 0) {
+        savedScrolls.push({ sel, top: el.scrollTop, left: el.scrollLeft });
+      }
+    }
+
     document.documentElement.dataset.theme = store.getState().settings?.theme || "dark";
     root.innerHTML = renderLayout(store.getState());
+
+    // Restore scroll positions
+    for (const { sel, top, left } of savedScrolls) {
+      const el = root.querySelector(sel);
+      if (el) {
+        el.scrollTop = top;
+        el.scrollLeft = left;
+      }
+    }
 
     // Restore focus context
     if (focusSelector) {
