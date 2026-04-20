@@ -266,10 +266,14 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             try:
                 import os
                 files_found = os.listdir(UPLOADS_DIR) if UPLOADS_DIR.exists() else []
-                # Find log file if exists, I'm assuming python logs somewhere or we can just send the dir content
-                return self.respond_json({"uploads_dir": str(UPLOADS_DIR), "files": files_found})
+                with self.db() as conn:
+                    rows = conn.execute("select id, original_name, storage_path, file_kind from import_file order by created_at desc limit 2").fetchall()
+                    db_files = [dict(r) for r in rows]
+                return self.respond_json({"uploads_dir": str(UPLOADS_DIR), "files": files_found, "db": db_files})
             except Exception as e:
-                return self.respond_json({"error": str(e)})
+                import traceback
+                return self.respond_json({"error": str(e), "trace": traceback.format_exc()})
+
 
         if route == "/api/webhooks/n8n/import-result":
 
