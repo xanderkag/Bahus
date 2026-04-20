@@ -424,12 +424,18 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         for i in range(retries):
             try:
                 # prepare=False prevents DuplicatePreparedStatement errors in ThreadingHTTPServer
-                return psycopg.connect(self.config.db_dsn, row_factory=dict_row, prepare_threshold=None)
+                # connect_timeout=3 prevents silent hangs if Railway networking fails
+                return psycopg.connect(
+                    self.config.db_dsn, 
+                    row_factory=dict_row, 
+                    prepare_threshold=None,
+                    connect_timeout=3
+                )
             except psycopg.Error as e:
                 last_exc = e
                 logger.warning(f"Database connection attempt {i+1} failed: {e}. Retrying in 2s...")
                 time.sleep(2)
-        raise last_exc
+        raise Exception(f"Failed to connect to db after {retries} retries: {last_exc}")
 
 
     def require_import(self, conn, import_id: str) -> dict | None:
@@ -1256,12 +1262,15 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             n8n_logger.info(f"[AI] mode=text ({len(full_text)} chars)")
             return "text", full_text
 
-        # Vision: render each page to PNG at 200 DPI
-        n8n_logger.info(f"[AI] mode=vision (rendering {page_count} pages at 200 DPI)")
-        images_b64 = [
-            base64.b64encode(page.get_pixmap(dpi=200).tobytes("png")).decode("ascii")
-            for page in doc
-        ]
+        # Vision: render each page to PNG at 150 DPI (limit strictly to first 10 pages for safety)
+        max_vision_pages = min(page_count, 10)
+        n8n_logger.info(f"[AI] mode=vision (rendering {max_vision_pages} pages at 150 DPI)")
+        images_b64 = []
+        for i in range(max_vision_pages):
+            page = doc[i]
+            # 150 DPI is a good balance of readability and image size
+            images_b64.append(base64.b64encode(page.get_pixmap(dpi=150).tobytes("png")).decode("ascii"))
+            
         doc.close()
         return "vision", images_b64
 
