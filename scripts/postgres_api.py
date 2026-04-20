@@ -1277,7 +1277,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 "messages": messages,
                 "response_format": {"type": "json_object"},
                 "temperature": 0,
-                "max_tokens": 16384,
+
             },
             timeout=300,  # 5 minutes for large documents
         )
