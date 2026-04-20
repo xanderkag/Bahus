@@ -264,12 +264,19 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             return self.handle_dispatch_import(route.split("/")[3])
         if route == "/api/debug/test":
             try:
-                pf = PROJECT_ROOT / ".local" / "logs" / "n8n.log"
-                log_content = pf.read_text()[-4000:] if pf.exists() else "NOT FOUND"
-                return self.respond_json({"logs": log_content})
+                with self.db() as conn:
+                    # Check if file_bytes exists
+                    col = conn.execute("SELECT column_name FROM information_schema.columns WHERE table_name='import_file' AND column_name='file_bytes'").fetchone()
+                    
+                    # Check recent files to see length of bytes
+                    rows = conn.execute("SELECT id, original_name, size_bytes, length(file_bytes) as bytes_len FROM import_file ORDER BY uploaded_at DESC LIMIT 3").fetchall()
+                    db_files = [dict(r) for r in rows]
+                    
+                return self.respond_json({"column_exists": bool(col), "files": db_files})
             except Exception as e:
                 import traceback
                 return self.respond_json({"error": str(e), "trace": traceback.format_exc()})
+
 
 
 
