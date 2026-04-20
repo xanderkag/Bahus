@@ -842,14 +842,21 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             if batch_row is None:
                 return self.respond_json({"error": "Import not found", "import_id": import_id}, status=HTTPStatus.NOT_FOUND)
 
-            meta = batch_row["meta"] or {}
-
-            # Phase 2: If a run is in flight, check its status at OpenAI on each poll
+            # Stale detection: if processing > 5 min, mark as failed (thread died)
             current_status = batch_row["processing_status"] or batch_row["status"] or "uploaded"
-            if current_status == "processing" and meta.get("openai_run_id"):
-                completed = self._check_and_collect_openai_run(import_id, meta, conn)
-                if completed:
-                    # Refresh from DB after update
+            if current_status == "processing" and batch_row.get("processing_started_at"):
+                from datetime import datetime, timezone, timedelta
+                started = batch_row["processing_started_at"]
+                if started and (datetime.now(timezone.utc) - started) > timedelta(minutes=5):
+                    n8n_logger.warning(f"[AI] Stale processing detected for import={import_id}, auto-failing")
+                    conn.execute(
+                        "update import_batch set status='failed', processing_status='failed', "
+                        "processing_finished_at=now(), updated_at=now(), "
+                        "meta = jsonb_set(coalesce(meta,'{}'::jsonb), '{error}', '\"Stale: processing timed out\"'::jsonb) "
+                        "where id=%s",
+                        (import_id,),
+                    )
+                    conn.commit()
                     batch_row = self.require_import(conn, import_id)
 
             files = self.load_import_files(conn, import_id)
@@ -1096,32 +1103,27 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             return None
 
     def _trigger_n8n_import_dispatch(self, import_id: str, force: bool = False) -> dict:
-        """Phase 1: Upload file to OpenAI and create Assistants run. Returns immediately.
+        """Smart PDF extraction: analyze PDF type, then use Chat Completions.
 
-        Stores run_id + thread_id + assistant_id + file_id in import_batch.meta.
-        The actual result is collected by handle_import_status() on each frontend poll.
-        This is stateless — survives server restarts and Railway redeploys.
+        Text PDFs → extract full text with PyMuPDF → Chat Completions
+        Scanned PDFs → render pages to images → Vision API (Chat Completions)
+        Processing runs in a short-lived background thread (30-120s).
         """
-        import time
         with self.db() as conn:
             batch_row = self.require_import(conn, import_id)
             if batch_row is None:
                 raise ValueError("Import not found")
 
-            # Guard: don't re-dispatch if rows already exist (one-shot processing)
             if not force:
                 existing_rows = conn.execute(
                     "select count(*) as cnt from import_row where import_batch_id = %s",
                     (import_id,)
                 ).fetchone()["cnt"]
                 if existing_rows > 0:
-                    n8n_logger.info(
-                        f"[AI] SKIP import_id={import_id} — already has {existing_rows} rows"
-                    )
                     return {"import_id": import_id, "skipped": True, "reason": "already_processed"}
 
             files = self.load_import_files(conn, import_id)
-            price_file = next((item for item in files if item["file_kind"] == "price"), None)
+            price_file = next((f for f in files if f["file_kind"] == "price"), None)
             if price_file is None:
                 raise ValueError("Price file not found")
 
@@ -1130,143 +1132,23 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 "select file_bytes, original_name, mime_type from import_file where id = %s",
                 (file_id_db,)
             ).fetchone()
-
             if not file_bytes_row or not file_bytes_row["file_bytes"]:
-                raise ValueError("File bytes not found in database — re-upload the file")
+                raise ValueError("File bytes not found — re-upload the file")
 
             file_bytes = bytes(file_bytes_row["file_bytes"])
-            filename = file_bytes_row["original_name"] or price_file.get("file_name", "file.pdf")
-            mime_type = file_bytes_row["mime_type"] or "application/pdf"
-
-            # If forcing, cleanup any previous OpenAI resources from meta
-            existing_meta = batch_row["meta"] or {}
-            if force:
-                self._cleanup_openai_resources(existing_meta)
+            filename = file_bytes_row["original_name"] or "file.pdf"
 
             default_user_id = self.get_default_user_id(conn)
             job_id = str(uuid.uuid4())
-
             conn.execute(
-                """
-                insert into job_run (id, type, target_type, target_id, status, payload, created_by_user_id)
-                values (%s, 'import_parse', 'import_batch', %s, 'queued', '{}'::jsonb, %s)
-                """,
+                "insert into job_run (id, type, target_type, target_id, status, payload, created_by_user_id) "
+                "values (%s, 'import_parse', 'import_batch', %s, 'running', '{}'::jsonb, %s)",
                 (job_id, import_id, default_user_id),
             )
-
-        # ── Phase 1: Upload file ──────────────────────────────────────────────
-        api_key = self.config.openai_api_key
-        if not api_key:
-            raise ValueError("OPENAI_API_KEY is not configured")
-
-        auth_header = {"Authorization": f"Bearer {api_key}"}
-        headers = {
-            **auth_header,
-            "Content-Type": "application/json",
-            "OpenAI-Beta": "assistants=v2",
-        }
-
-        n8n_logger.info(f"[AI] Uploading {filename} ({len(file_bytes)} bytes) to OpenAI")
-        upload_resp = requests.post(
-            "https://api.openai.com/v1/files",
-            headers=auth_header,
-            files={"file": (filename, file_bytes, mime_type)},
-            data={"purpose": "assistants"},
-            timeout=120,
-        )
-        if not upload_resp.ok:
-            raise ValueError(f"OpenAI file upload failed ({upload_resp.status_code}): {upload_resp.text[:200]}")
-        openai_file_id = upload_resp.json()["id"]
-        n8n_logger.info(f"[AI] File uploaded: openai_file_id={openai_file_id}")
-
-        # ── Phase 2: Create assistant ─────────────────────────────────────────
-        prompt = (
-            "You are a master data extractor. Extract ALL product rows from this price list.\n"
-            "Output ONLY a valid JSON object (no markdown, no fences):\n"
-            '{"rows": [{"name":"...","article":"...","qty":1,"purchase_price":100,"volume_l":0.75,"country":"...","category":"...","note":"..."}]}\n'
-            "If a field value is unknown use null."
-        )
-        a_resp = requests.post(
-            "https://api.openai.com/v1/assistants",
-            headers=headers,
-            json={
-                "name": "BahusExtractorTemp",
-                "model": "gpt-4o",
-                "instructions": prompt,
-                "tools": [{"type": "file_search"}],
-                "tool_resources": {
-                    "file_search": {"vector_stores": [{"file_ids": [openai_file_id]}]}
-                },
-            },
-            timeout=60,
-        )
-        if not a_resp.ok:
-            requests.delete(f"https://api.openai.com/v1/files/{openai_file_id}", headers=auth_header, timeout=15)
-            raise ValueError(f"Create assistant failed ({a_resp.status_code}): {a_resp.text[:200]}")
-        openai_assistant_id = a_resp.json()["id"]
-        n8n_logger.info(f"[AI] Assistant created: {openai_assistant_id}")
-
-        # ── Phase 3: Create thread + run ─────────────────────────────────────
-        run_resp = requests.post(
-            "https://api.openai.com/v1/threads/runs",
-            headers=headers,
-            json={
-                "assistant_id": openai_assistant_id,
-                "thread": {
-                    "messages": [{
-                        "role": "user",
-                        "content": "Extract all product rows. Return ONLY JSON.",
-                    }]
-                },
-                "response_format": {"type": "json_object"},
-            },
-            timeout=60,
-        )
-        if not run_resp.ok:
-            requests.delete(f"https://api.openai.com/v1/assistants/{openai_assistant_id}", headers=headers, timeout=15)
-            requests.delete(f"https://api.openai.com/v1/files/{openai_file_id}", headers=auth_header, timeout=15)
-            raise ValueError(f"Create run failed ({run_resp.status_code}): {run_resp.text[:200]}")
-        run_data = run_resp.json()
-        openai_thread_id = run_data["thread_id"]
-        openai_run_id = run_data["id"]
-        n8n_logger.info(f"[AI] Run created: thread={openai_thread_id} run={openai_run_id}")
-
-        # ── Save run_id to DB so status polling can pick it up ────────────────
-        with self.db() as conn:
             conn.execute(
-                """
-                update import_batch set
-                    status = 'processing',
-                    processing_status = 'processing',
-                    processing_started_at = now(),
-                    processing_finished_at = null,
-                    updated_at = now(),
-                    meta = jsonb_set(
-                        jsonb_set(
-                            jsonb_set(
-                                jsonb_set(
-                                    coalesce(meta, '{}'::jsonb),
-                                    '{openai_run_id}', %s::jsonb
-                                ),
-                                '{openai_thread_id}', %s::jsonb
-                            ),
-                            '{openai_assistant_id}', %s::jsonb
-                        ),
-                        '{openai_file_id}', %s::jsonb
-                    )
-                where id = %s
-                """,
-                (
-                    json.dumps(openai_run_id),
-                    json.dumps(openai_thread_id),
-                    json.dumps(openai_assistant_id),
-                    json.dumps(openai_file_id),
-                    import_id,
-                ),
-            )
-            conn.execute(
-                "update job_run set status='running', updated_at=now() where id=%s",
-                (job_id,),
+                "update import_batch set status='processing', processing_status='processing', "
+                "processing_started_at=now(), processing_finished_at=null, updated_at=now() where id=%s",
+                (import_id,),
             )
             conn.execute(
                 "update import_file set processing_status='processing' where import_batch_id=%s and file_kind='price'",
@@ -1274,162 +1156,160 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             )
             conn.commit()
 
-        n8n_logger.info(f"[AI] Phase 1 complete — run queued at OpenAI. Status polling will collect result.")
-        return {"import_id": import_id, "job_id": job_id, "status": "processing", "openai_run_id": openai_run_id}
-
-    def _cleanup_openai_resources(self, meta: dict) -> None:
-        """Delete leftover OpenAI assistant/file from a previous run."""
-        api_key = self.config.openai_api_key
-        if not api_key:
-            return
-        auth = {"Authorization": f"Bearer {api_key}"}
-        hdrs = {**auth, "Content-Type": "application/json", "OpenAI-Beta": "assistants=v2"}
-        for key, url in [
-            ("openai_assistant_id", "https://api.openai.com/v1/assistants/{}"),
-            ("openai_file_id", "https://api.openai.com/v1/files/{}"),
-        ]:
-            val = meta.get(key)
-            if val:
-                try:
-                    requests.delete(url.format(val), headers=hdrs if "assistant" in key else auth, timeout=10)
-                except Exception:
-                    pass
-
-    def _check_and_collect_openai_run(self, import_id: str, meta: dict, conn) -> bool:
-        """Phase 2: Called on every GET /imports or /imports/{id}/status poll.
-
-        Returns True if the run completed (success or failure) and DB was updated.
-        Returns False if run is still in_progress/queued (caller should keep polling).
-        """
-        import re, time
-        openai_run_id = meta.get("openai_run_id")
-        openai_thread_id = meta.get("openai_thread_id")
-        openai_assistant_id = meta.get("openai_assistant_id")
-        openai_file_id = meta.get("openai_file_id")
-
-        if not openai_run_id or not openai_thread_id:
-            return False  # no run to check
+        # ── Analyze PDF ───────────────────────────────────────────────────────
+        extract_mode, pdf_payload = self._analyze_pdf(file_bytes, filename)
+        n8n_logger.info(f"[AI] PDF analysis: mode={extract_mode} file={filename}")
 
         api_key = self.config.openai_api_key
         if not api_key:
-            return False
+            raise ValueError("OPENAI_API_KEY is not configured")
 
-        auth_header = {"Authorization": f"Bearer {api_key}"}
-        headers = {
-            **auth_header,
-            "Content-Type": "application/json",
-            "OpenAI-Beta": "assistants=v2",
-        }
-
-        try:
-            poll = requests.get(
-                f"https://api.openai.com/v1/threads/{openai_thread_id}/runs/{openai_run_id}",
-                headers=headers,
-                timeout=15,
-            )
-            if not poll.ok:
-                n8n_logger.warning(f"[AI] Poll failed for run {openai_run_id}: {poll.status_code}")
-                return False  # transient error, try again on next poll
-
-            run_data = poll.json()
-            status = run_data.get("status")
-            n8n_logger.info(f"[AI] Poll import={import_id} run={openai_run_id} status={status}")
-
-            if status in ("queued", "in_progress"):
-                return False  # still running
-
-            # ── Terminal state ────────────────────────────────────────────────
-            def cleanup():
-                if openai_assistant_id:
-                    try:
-                        requests.delete(f"https://api.openai.com/v1/assistants/{openai_assistant_id}", headers=headers, timeout=10)
-                    except Exception:
-                        pass
-                if openai_file_id:
-                    try:
-                        requests.delete(f"https://api.openai.com/v1/files/{openai_file_id}", headers=auth_header, timeout=10)
-                    except Exception:
-                        pass
-                # Clear run keys from meta so we don't check again
-                conn.execute(
-                    """
-                    update import_batch set meta = meta
-                        - 'openai_run_id' - 'openai_thread_id'
-                        - 'openai_assistant_id' - 'openai_file_id'
-                    where id = %s
-                    """,
-                    (import_id,),
-                )
-
-            if status in ("failed", "cancelled", "expired"):
-                err_detail = json.dumps(run_data.get("last_error") or {})
-                n8n_logger.error(f"[AI] Run {status} for import={import_id}: {err_detail}")
-                cleanup()
-                conn.execute(
-                    """
-                    update import_batch set
-                        status='failed', processing_status='failed',
-                        processing_finished_at=now(), updated_at=now(),
-                        meta = jsonb_set(coalesce(meta,'{}'::jsonb), '{error}', %s::jsonb)
-                    where id=%s
-                    """,
-                    (json.dumps(f"Run {status}: {err_detail}"), import_id),
-                )
-                conn.commit()
-                return True
-
-            # ── Completed — fetch messages ────────────────────────────────────
-            msg_resp = requests.get(
-                f"https://api.openai.com/v1/threads/{openai_thread_id}/messages",
-                headers=headers,
-                timeout=20,
-            )
-            if not msg_resp.ok:
-                n8n_logger.warning(f"[AI] Failed to fetch messages: {msg_resp.status_code}")
-                return False  # try again next poll
-
-            msgs = msg_resp.json()
-            block = None
-            for c in msgs.get("data", [{}])[0].get("content", []):
-                if c.get("type") == "text":
-                    block = c
-                    break
-            raw_text = block["text"]["value"] if block else '{"rows":[]}'
-            n8n_logger.info(f"[AI] Reply import={import_id} length={len(raw_text)} preview={raw_text[:200]}")
-
-            # ── Parse JSON ────────────────────────────────────────────────────
+        # ── Run extraction in background thread ──────────────────────────────
+        def _run():
             try:
-                cleaned = raw_text.strip()
-                cleaned = re.sub(r'【[^】]*】', '', cleaned)  # remove citation markers
-                if cleaned.startswith("```"):
-                    cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned)
-                    cleaned = re.sub(r'\s*```\s*$', '', cleaned)
-                cleaned = cleaned.strip()
-                if not cleaned or cleaned[0] not in ('{', '['):
-                    raise ValueError(f"Not valid JSON: {raw_text[:200]}")
-                parsed = json.loads(cleaned)
-                rows = parsed if isinstance(parsed, list) else (parsed.get("rows") or [])
-            except Exception as parse_exc:
-                n8n_logger.error(f"[AI] JSON parse error import={import_id}: {parse_exc}")
-                cleanup()
-                conn.execute(
-                    """
-                    update import_batch set
-                        status='failed', processing_status='failed',
-                        processing_finished_at=now(), updated_at=now(),
-                        meta = jsonb_set(coalesce(meta,'{}'::jsonb), '{error}', %s::jsonb)
-                    where id=%s
-                    """,
-                    (json.dumps(f"JSON parse error: {parse_exc}"), import_id),
-                )
-                conn.commit()
-                return True
+                rows = self._chat_completions_extract(api_key, extract_mode, pdf_payload, filename, import_id)
+                status = "parsed" if rows else "failed"
+                error = None if rows else "No rows extracted"
+                self._save_extraction_result(import_id, job_id, file_id_db, rows, status, error)
+            except Exception as exc:
+                n8n_logger.error(f"[AI] ERROR import={import_id}\n{traceback.format_exc()}")
+                self._save_extraction_result(import_id, job_id, file_id_db, [], "failed", str(exc))
 
-            n8n_logger.info(f"[AI] Parsed {len(rows)} rows from import={import_id}")
+        threading.Thread(target=_run, daemon=True).start()
+        return {"import_id": import_id, "job_id": job_id, "status": "processing", "extract_mode": extract_mode}
 
-            # ── Save rows to DB ───────────────────────────────────────────────
-            cleanup()
-            parse_status = "parsed" if rows else "failed"
+    # ── PDF Analysis ──────────────────────────────────────────────────────────
+
+    def _analyze_pdf(self, file_bytes: bytes, filename: str) -> tuple:
+        """Analyze PDF to determine extraction strategy.
+
+        Returns (mode, payload):
+        - ('text', full_text_string)  — for text-based PDFs
+        - ('vision', [base64_png, ...]) — for scanned/image PDFs
+        """
+        import fitz  # PyMuPDF
+        import base64
+        import io
+
+        doc = fitz.open(stream=file_bytes, filetype="pdf")
+        pages_text = []
+        total_chars = 0
+
+        for page in doc:
+            text = page.get_text("text") or ""
+            pages_text.append(text)
+            total_chars += len(text.strip())
+
+        avg_chars = total_chars / max(len(doc), 1)
+        n8n_logger.info(f"[AI] PDF scan: pages={len(doc)} total_chars={total_chars} avg_chars/page={avg_chars:.0f}")
+
+        # Heuristic: if average chars per page > 50, it's a text PDF
+        if avg_chars > 50:
+            full_text = "\n\n--- PAGE BREAK ---\n\n".join(pages_text)
+            doc.close()
+            return ("text", full_text)
+
+        # Scanned PDF — render pages as images
+        n8n_logger.info(f"[AI] Scanned PDF detected, rendering {len(doc)} pages as images")
+        images_b64 = []
+        for page in doc:
+            # Render at 200 DPI for good quality without excessive size
+            pix = page.get_pixmap(dpi=200)
+            img_bytes = pix.tobytes("png")
+            images_b64.append(base64.b64encode(img_bytes).decode("ascii"))
+
+        doc.close()
+        return ("vision", images_b64)
+
+    # ── Chat Completions Extraction ───────────────────────────────────────────
+
+    def _chat_completions_extract(self, api_key: str, mode: str, payload, filename: str, import_id: str) -> list:
+        """Call OpenAI Chat Completions to extract rows.
+
+        Text mode: sends full text as user message.
+        Vision mode: sends page images as image_url content parts.
+        """
+        import re
+
+        system_prompt = (
+            "You are a master data extractor for wine/spirits price lists.\n"
+            "Extract ALL product rows from the provided document.\n"
+            "Output ONLY a valid JSON object (no markdown, no code fences):\n"
+            '{"rows": [{"name":"Full product name","article":"SKU/article if present",'
+            '"purchase_price":100.00,"volume_l":0.75,"country":"Country",'
+            '"category":"Wine/Spirits/Beer/etc","note":"any extra info"}]}\n'
+            "Rules:\n"
+            "- Extract EVERY row, do not skip or summarize.\n"
+            "- purchase_price must be a number (no currency symbols).\n"
+            "- volume_l in liters (0.75, 1.0, 0.5, etc).\n"
+            "- If a field value is unknown, use null.\n"
+            "- Do NOT wrap in markdown code fences."
+        )
+
+        if mode == "text":
+            user_content = f"Here is the full text of the price list '{filename}':\n\n{payload}"
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ]
+        else:
+            # Vision mode — send images
+            content_parts = [{"type": "text", "text": f"Extract ALL product rows from this scanned price list '{filename}'. There are {len(payload)} pages."}]
+            for i, img_b64 in enumerate(payload):
+                content_parts.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{img_b64}", "detail": "high"},
+                })
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": content_parts},
+            ]
+
+        n8n_logger.info(f"[AI] Calling Chat Completions mode={mode} import={import_id}")
+        resp = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "gpt-4o",
+                "messages": messages,
+                "response_format": {"type": "json_object"},
+                "temperature": 0,
+                "max_tokens": 16384,
+            },
+            timeout=300,  # 5 minutes for large documents
+        )
+
+        if not resp.ok:
+            raise ValueError(f"Chat Completions failed ({resp.status_code}): {resp.text[:300]}")
+
+        raw_text = resp.json()["choices"][0]["message"]["content"]
+        n8n_logger.info(f"[AI] Response import={import_id} length={len(raw_text)} preview={raw_text[:200]}")
+
+        # Parse JSON
+        cleaned = raw_text.strip()
+        cleaned = re.sub(r'【[^】]*】', '', cleaned)
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned)
+            cleaned = re.sub(r'\s*```\s*$', '', cleaned)
+        cleaned = cleaned.strip()
+
+        if not cleaned or cleaned[0] not in ('{', '['):
+            raise ValueError(f"Not valid JSON: {raw_text[:300]}")
+
+        parsed = json.loads(cleaned)
+        rows = parsed if isinstance(parsed, list) else (parsed.get("rows") or [])
+        n8n_logger.info(f"[AI] Extracted {len(rows)} rows from {filename}")
+        return rows
+
+    # ── Save Result ───────────────────────────────────────────────────────────
+
+    def _save_extraction_result(self, import_id: str, job_id: str, file_id: str,
+                                 rows: list, status: str, error: str | None) -> None:
+        """Save extraction result to DB. Called from background thread."""
+        with self.db() as conn:
             conn.execute("delete from import_row where import_batch_id=%s", (import_id,))
             for index, row in enumerate(rows):
                 conn.execute(
@@ -1455,22 +1335,22 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 """
                 update import_batch set
                     status=%s, processing_status=%s,
-                    processing_finished_at=now(), last_webhook_at=now(), updated_at=now()
+                    processing_finished_at=now(), last_webhook_at=now(), updated_at=now(),
+                    meta = jsonb_set(coalesce(meta,'{}'::jsonb), '{error}', %s::jsonb)
                 where id=%s
                 """,
-                (parse_status, parse_status, import_id),
+                (status, status, json.dumps(error or ""), import_id),
             )
             conn.execute(
-                "update import_file set processing_status=%s where import_batch_id=%s and file_kind='price'",
-                (parse_status, import_id),
+                "update import_file set processing_status=%s, last_error=%s where import_batch_id=%s and file_kind='price'",
+                (status, error, import_id),
+            )
+            conn.execute(
+                "update job_run set status=%s, finished_at=now() where id=%s",
+                ("done" if status == "parsed" else "failed", job_id),
             )
             conn.commit()
-            n8n_logger.info(f"[AI] DONE import={import_id} rows={len(rows)} status={parse_status}")
-            return True
-
-        except Exception as exc:
-            n8n_logger.error(f"[AI] _check_and_collect_openai_run error import={import_id}: {exc}\n{traceback.format_exc()}")
-            return False
+        n8n_logger.info(f"[AI] Saved import={import_id} status={status} rows={len(rows)} error={error}")
 
 
     def handle_dispatch_import(self, import_id: str) -> None:
