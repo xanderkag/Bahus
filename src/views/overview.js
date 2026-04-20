@@ -257,7 +257,15 @@ function renderImportsTable(state) {
               ${escapeHtml(formatImportStatus(item.status))}
             </span>
           </td>
-          <td><span class="pill">${issueCount} проблем</span></td>
+          <td style="text-align:right; font-variant-numeric: tabular-nums;">
+            ${item.row_count > 0
+              ? `<span class="pill" style="background:var(--accent-subtle,rgba(99,102,241,.12));color:var(--accent,#6366f1);font-weight:600;">${item.row_count}</span>`
+              : isProcessing
+                ? `<span style="color:var(--text-3,#888);font-size:12px;">…</span>`
+                : `<span style="color:var(--text-3,#888);">—</span>`
+            }
+          </td>
+          <td><span class="pill${issueCount > 0 ? ' status-bad' : ''}">${issueCount > 0 ? issueCount + " ⚠" : "0 проблем"}</span></td>
         </tr>
       `;
     })
@@ -946,6 +954,7 @@ export function renderOverview(state) {
                   <th class="filterable-th">${renderImportColumnHeader("Поставщик", "supplier", state.ui.activeImportColumnFilter)}${renderImportColumnMenu(state, "supplier")}</th>
                   <th class="filterable-th">${renderImportColumnHeader("Тип", "type", state.ui.activeImportColumnFilter)}${renderImportColumnMenu(state, "type")}</th>
                   <th class="filterable-th">${renderImportColumnHeader("Статус", "status", state.ui.activeImportColumnFilter)}${renderImportColumnMenu(state, "status")}</th>
+                  <th>Позиций</th>
                   <th>Проблемы</th>
                 </tr>
               </thead>

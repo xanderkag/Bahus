@@ -687,6 +687,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 if issue["severity"] != "error"
             ],
             "products": rows,
+            "row_count": len(rows),
         }
 
     def handle_bootstrap(self) -> None:
