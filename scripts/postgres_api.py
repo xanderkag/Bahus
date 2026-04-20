@@ -1207,8 +1207,8 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         return {"import_id": import_id, "job_id": job_id, "status": "queued"}
 
     def _openai_extract_rows(self, file_bytes, filename, mime_type):
-        """Extract product rows via gpt-4o Chat Completions with native PDF support."""
-        import re
+        """Extract product rows via OpenAI Assistants API (file_search) with Chat Completions fallback."""
+        import re, time
         api_key = self.config.openai_api_key
         if not api_key:
             return [], "OPENAI_API_KEY is not configured on the backend"
@@ -1218,13 +1218,15 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         n8n_logger.info(f"[AI] Processing {filename} ({len(file_bytes)} bytes)")
         auth_header = {"Authorization": f"Bearer {api_key}"}
         json_header = {**auth_header, "Content-Type": "application/json"}
+        assistants_header = {**json_header, "OpenAI-Beta": "assistants=v2"}
+
         prompt = (
-            "You are a professional data extraction specialist. Your task: extract EVERY SINGLE product row "
+            "You are a professional data extraction specialist. Extract EVERY SINGLE product row "
             "from this price list document. Do NOT stop early, do NOT skip rows, do NOT summarize. "
-            "Count all rows in the source document and make sure your output has the same count. "
-            "Output ONLY a valid JSON object with no markdown, no fences, no commentary: "
+            "Count all rows in the source document and make sure your output has the same count.\n"
+            'Output ONLY a valid JSON object: '
             '{"rows": [{"name":"Whisky 12yo","article":"ART-001","purchase_price":1590,'
-            '"volume_l":0.7,"country":"Scotland","category":"Whiskey","note":null,"promo":false}]} '
+            '"volume_l":0.7,"country":"Scotland","category":"Whiskey","note":null,"promo":false}]}\n'
             "Field rules:\n"
             "- name: full product name including brand and age/vintage\n"
             "- article: SKU/article number if present, else null\n"
@@ -1234,110 +1236,172 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             "- category: wine/whiskey/vodka/cognac/champagne/beer/other\n"
             "- note: any special notes or promo text, null if absent\n"
             "- promo: true if marked as promo/акция, false otherwise\n"
-            "CRITICAL: extract ALL rows. If the document has 50 products, return 50 rows."
+            "CRITICAL: extract ALL rows without exception."
         )
 
-        # 1. Upload file (user_data purpose for Chat Completions)
+        # 1. Upload file for Assistants API (purpose=assistants)
         upload_resp = requests.post(
             "https://api.openai.com/v1/files",
             headers=auth_header,
             files={"file": (filename, file_bytes, mime_type)},
-            data={"purpose": "user_data"},
+            data={"purpose": "assistants"},
             timeout=120,
         )
-        if not upload_resp.ok:
-            upload_resp = requests.post(
-                "https://api.openai.com/v1/files",
-                headers=auth_header,
-                files={"file": (filename, file_bytes, mime_type)},
-                data={"purpose": "assistants"},
-                timeout=120,
-            )
         if not upload_resp.ok:
             return [], f"OpenAI file upload failed: {upload_resp.text[:300]}"
         file_id = upload_resp.json()["id"]
         n8n_logger.info(f"[AI] File uploaded: file_id={file_id}")
 
-        headers = json_header
         assistant_id = None
+        thread_id = None
         try:
-            # 2. Chat Completions with native file attachment
+            # ── PRIMARY: Assistants API with file_search (same as n8n) ──────────
+            n8n_logger.info("[AI] Using Assistants API with file_search")
+
+            # 2a. Create temporary assistant
+            a_resp = requests.post(
+                "https://api.openai.com/v1/assistants",
+                headers=assistants_header,
+                json={
+                    "name": "BahusExtractorTemp",
+                    "model": "gpt-4.1",
+                    "instructions": prompt,
+                    "tools": [{"type": "file_search"}],
+                    "tool_resources": {
+                        "file_search": {
+                            "vector_stores": [{"file_ids": [file_id]}]
+                        }
+                    },
+                },
+                timeout=60,
+            )
+            if not a_resp.ok:
+                n8n_logger.warning(f"[AI] Assistants API create failed ({a_resp.status_code}): {a_resp.text[:200]}")
+                raise ValueError(f"Assistants create failed: {a_resp.status_code}")
+            assistant_id = a_resp.json()["id"]
+
+            # 2b. Create thread + run
+            run_resp = requests.post(
+                "https://api.openai.com/v1/threads/runs",
+                headers=assistants_header,
+                json={
+                    "assistant_id": assistant_id,
+                    "thread": {
+                        "messages": [{"role": "user", "content": "Extract all product rows from the attached file. Return ONLY JSON."}]
+                    },
+                    "response_format": {"type": "json_object"},
+                },
+                timeout=60,
+            )
+            if not run_resp.ok:
+                raise ValueError(f"Run create failed: {run_resp.status_code}")
+            run_data = run_resp.json()
+            thread_id = run_data["thread_id"]
+            run_id = run_data["id"]
+
+            # 2c. Poll run status (max ~5 min)
+            status = run_data["status"]
+            attempts = 0
+            while status in ("queued", "in_progress") and attempts < 100:
+                time.sleep(3)
+                attempts += 1
+                poll = requests.get(
+                    f"https://api.openai.com/v1/threads/{thread_id}/runs/{run_id}",
+                    headers=assistants_header, timeout=30,
+                )
+                if poll.ok:
+                    poll_data = poll.json()
+                    status = poll_data["status"]
+                    if status in ("failed", "cancelled", "expired"):
+                        err_detail = poll_data.get("last_error", {})
+                        raise ValueError(f"Run {status}: {err_detail}")
+            n8n_logger.info(f"[AI] Run completed in {attempts * 3}s, status={status}")
+
+            if status != "completed":
+                raise ValueError(f"Run timed out after {attempts * 3}s, status={status}")
+
+            # 2d. Get messages
+            msg_resp = requests.get(
+                f"https://api.openai.com/v1/threads/{thread_id}/messages",
+                headers=assistants_header, timeout=30,
+            )
+            if not msg_resp.ok:
+                raise ValueError("Failed to fetch messages")
+            msgs = msg_resp.json()
+            block = next((c for c in (msgs.get("data", [{}])[0].get("content", [])) if c.get("type") == "text"), None)
+            raw_text = block["text"]["value"] if block else '{"rows":[]}'
+            n8n_logger.info(f"[AI] Assistants reply length={len(raw_text)}, raw={raw_text[:300]}")
+
+        except (ValueError, Exception) as exc:
+            n8n_logger.warning(f"[AI] Assistants API failed: {exc}, falling back to Chat Completions")
+            # ── FALLBACK: Chat Completions ──────────────────────────────────────
             resp = requests.post(
                 "https://api.openai.com/v1/chat/completions",
                 headers=json_header,
                 json={
                     "model": "gpt-4.1",
-                    "messages": [{
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {"type": "file", "file": {"file_id": file_id}},
-                        ],
-                    }],
+                    "messages": [{"role": "user", "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "file", "file": {"file_id": file_id}},
+                    ]}],
                     "response_format": {"type": "json_object"},
                     "max_tokens": 32000,
                 },
                 timeout=180,
             )
-            # Fallback: base64 inline for files <= 10MB
+            # Sub-fallback: base64 inline
             if not resp.ok and len(file_bytes) <= 10 * 1024 * 1024:
                 import base64 as _b64
-                n8n_logger.warning(f"[AI] file_id failed ({resp.status_code}), trying base64 inline")
+                n8n_logger.warning(f"[AI] file_id fallback failed ({resp.status_code}), trying base64")
                 b64 = _b64.b64encode(file_bytes).decode()
                 resp = requests.post(
                     "https://api.openai.com/v1/chat/completions",
                     headers=json_header,
                     json={
                         "model": "gpt-4.1",
-                        "messages": [{
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": prompt},
-                                {"type": "image_url", "image_url": {
-                                    "url": "data:" + mime_type + ";base64," + b64
-                                }},
-                            ],
-                        }],
+                        "messages": [{"role": "user", "content": [
+                            {"type": "text", "text": prompt},
+                            {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64}"}},
+                        ]}],
                         "response_format": {"type": "json_object"},
                         "max_tokens": 32000,
                     },
                     timeout=180,
                 )
-
             if not resp.ok:
                 return [], f"Chat Completions failed: {resp.text[:300]}"
-
             raw_text = resp.json()["choices"][0]["message"]["content"]
-            n8n_logger.info(f"[AI] Reply received, length={len(raw_text)}, raw={raw_text[:500]}")
+            n8n_logger.info(f"[AI] Chat fallback reply length={len(raw_text)}")
 
-            # Strip markdown fences and citation annotations from file_search
-            import re
+        finally:
+            # Cleanup: delete assistant, file (fire & forget)
+            if assistant_id:
+                try:
+                    requests.delete(f"https://api.openai.com/v1/assistants/{assistant_id}", headers=assistants_header, timeout=15)
+                except Exception:
+                    pass
+            if file_id:
+                try:
+                    requests.delete(f"https://api.openai.com/v1/files/{file_id}", headers=auth_header, timeout=15)
+                except Exception:
+                    pass
+
+        # Parse JSON response
+        try:
             cleaned = raw_text.strip()
-            cleaned = re.sub(r'【[^】]*】', '', cleaned)  # remove 【4:0†source】 annotations
+            cleaned = re.sub(r'【[^】]*】', '', cleaned)
             if cleaned.startswith("```"):
                 cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned)
                 cleaned = re.sub(r'\s*```\s*$', '', cleaned)
             cleaned = cleaned.strip()
-
             if not cleaned or cleaned[0] not in ('{', '['):
-                return [], f"AI did not return valid JSON. Raw response: {raw_text[:300]}"
-
+                return [], f"AI did not return valid JSON. Raw: {raw_text[:300]}"
             parsed = json.loads(cleaned)
             rows = parsed if isinstance(parsed, list) else (parsed.get("rows") or [])
+            n8n_logger.info(f"[AI] Extracted {len(rows)} rows from {filename}")
             return rows, None
-
         except Exception as exc:
-            return [], f"OpenAI processing error: {exc}"
-        finally:
-            # Cleanup: delete uploaded file
-            if file_id:
-                try:
-                    requests.delete(
-                        f"https://api.openai.com/v1/files/{file_id}",
-                        headers=auth_header, timeout=15
-                    )
-                except Exception:
-                    pass
+            return [], f"JSON parse error: {exc}"
 
     def handle_dispatch_import(self, import_id: str) -> None:
         payload = self.read_json_body()
