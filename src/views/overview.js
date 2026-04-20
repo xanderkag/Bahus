@@ -485,9 +485,11 @@ function formatReviewStatus(status) {
 }
 
 function getDetailPhotos(product) {
+  const customImages = product.image_url ? [{ url: product.image_url, title: "Фото из сети", caption: "Найдено автоматически" }] : [];
   const images = [
     ...(product.images || []),
     ...(product.manual_match_result?.images || []),
+    ...customImages,
   ].filter(Boolean);
 
   if (images.length) {
@@ -503,6 +505,7 @@ function getDetailPhotos(product) {
       title: "Основное фото",
       caption: "Появится после сопоставления с каталогом или ручной загрузки.",
       src: "",
+      showSearchBtn: true,
     },
     {
       title: "Этикетка / упаковка",
@@ -521,9 +524,10 @@ function renderPhotoGallery(product) {
             photo.src
               ? `<img class="detail-photo-image" src="${escapeHtml(photo.src)}" alt="${escapeHtml(photo.title)}" />`
               : `
-                <div class="detail-photo-placeholder">
+                <div class="detail-photo-placeholder" id="photo-placeholder-${product.id}-${index}">
                   <strong>${escapeHtml(product.normalized_name || product.raw_name || `Фото ${index + 1}`)}</strong>
                   <span>${escapeHtml(photo.title)}</span>
+                  ${photo.showSearchBtn ? `<button class="ghost-btn" style="margin-top: 12px; align-self: start;" data-action="enrichRowPhoto" data-product-id="${product.id}">🔍 Найти в сети</button>` : ""}
                 </div>
               `
           }

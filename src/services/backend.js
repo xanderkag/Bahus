@@ -143,5 +143,10 @@ export function createBackend(apiBaseUrl) {
         body: JSON.stringify(payload),
       });
     },
+    enrichRowPhoto(rowId) {
+      return fetchJson(`${apiBaseUrl}/rows/${encodeURIComponent(rowId)}/enrich-photo`, {
+        method: "POST"
+      });
+    },
   };
 }

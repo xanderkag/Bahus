@@ -2301,6 +2301,44 @@ export function createActions(store, backend = null) {
         }));
       } catch {}
     },
+    async enrichRowPhoto({ productId }) {
+      const state = store.getState();
+      const product = state.entities.productsById[productId];
+      if (!product || !backend) return;
+
+      const placeholder = document.getElementById(`photo-placeholder-${productId}-0`);
+      if (placeholder) {
+        placeholder.style.opacity = '0.5';
+        placeholder.innerHTML = '<strong>Ищем фото...</strong><span>Пожалуйста, подождите</span>';
+      }
+
+      try {
+        const response = await backend.enrichRowPhoto(product.id || productId);
+        if (response.image_url) {
+          update((current) => ({
+            ...current,
+            entities: {
+              ...current.entities,
+              productsById: {
+                ...current.entities.productsById,
+                [productId]: {
+                  ...current.entities.productsById[productId],
+                  image_url: response.image_url,
+                },
+              },
+            },
+          }));
+        } else if (response.error) {
+              throw new Error(response.error);
+        }
+      } catch (err) {
+        console.error("Failed to enrich photo", err);
+        if (placeholder) {
+          placeholder.style.opacity = '1';
+          placeholder.innerHTML = '<strong>Ошибка поиска</strong><span>Не удалось найти (нужен API ключ)</span>';
+        }
+      }
+    },
     async triggerJob({ jobType, target }) {
       if (!backend) return;
       try {

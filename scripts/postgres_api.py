@@ -119,6 +119,7 @@ class AppConfig:
     public_file_base_url: str | None
     default_user_email: str
     openai_api_key: str | None
+    serper_api_key: str | None
 
 
 # --- PROTOTYPE DEFAULTS (override via env vars in production) ---
@@ -143,6 +144,7 @@ def build_config() -> AppConfig:
         public_file_base_url=os.getenv("PUBLIC_FILE_BASE_URL"),
         default_user_email=os.getenv("DEFAULT_MANAGER_EMAIL", "manager@bahus"),
         openai_api_key=os.getenv("OPENAI_API_KEY") or _OPENAI_KEY_FALLBACK,
+        serper_api_key=os.getenv("SERPER_API_KEY"),
     )
 
 
@@ -270,6 +272,8 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             return self.handle_create_import()
         if route.startswith("/api/imports/") and route.endswith("/dispatch"):
             return self.handle_dispatch_import(route.split("/")[3])
+        if route.startswith("/api/rows/") and route.endswith("/enrich-photo"):
+            return self.handle_enrich_photo(route.split("/")[3])
         if route == "/api/debug/test":
             try:
                 key = self.config.openai_api_key
@@ -282,15 +286,15 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 log = []
                 with self.db() as conn:
                     try:
-                        conn.execute("ALTER TABLE import_file ADD COLUMN IF NOT EXISTS file_bytes BYTEA;")
-                        conn.execute("ALTER TABLE import_file ADD COLUMN IF NOT EXISTS cleanup_done BOOLEAN DEFAULT FALSE;")
+                        conn.execute("ALTER TABLE import_row ADD COLUMN IF NOT EXISTS image_url TEXT;")
                         conn.commit()
                         log.append("Migration ok")
                     except Exception as e:
                         log.append(f"Migration error: {e}")
-                    col = conn.execute("SELECT column_name FROM information_schema.columns WHERE table_name='import_file' AND column_name='file_bytes'").fetchone()
-                    rows = conn.execute("SELECT id, original_name, size_bytes, length(file_bytes) as bytes_len FROM import_file ORDER BY uploaded_at DESC LIMIT 3").fetchall()
-                return self.respond_json({"env": env_check, "log": log, "column_exists": bool(col), "files": [dict(r) for r in rows]})
+                    
+                    cols = conn.execute("SELECT column_name FROM information_schema.columns WHERE table_name='import_row'").fetchall()
+                    
+                return self.respond_json({"env": env_check, "log": log, "cols": [dict(r) for r in cols]})
             except Exception as e:
                 import traceback
                 return self.respond_json({"error": str(e), "trace": traceback.format_exc()})
@@ -1658,6 +1662,60 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
 
         return self.respond_json({"item": refreshed, "error": error_text})
 
+
+    def handle_enrich_photo(self, row_id: str) -> None:
+        """Search and save a product photo using Serper.dev API."""
+        if not self.config.serper_api_key:
+            return self.respond_json({"error": "SERPER_API_KEY is not configured on the backend."}, status=HTTPStatus.BAD_REQUEST)
+
+        with self.db() as conn:
+            row = conn.execute("select normalized_name, raw_name from import_row where id=%s", (row_id,)).fetchone()
+            if not row:
+                return self.respond_json({"error": "Row not found"}, status=HTTPStatus.NOT_FOUND)
+
+        query = f"{row['normalized_name'] or row['raw_name']} wine bottle white background"
+
+        url = "https://google.serper.dev/images"
+        payload = json.dumps({"q": query, "num": 10})
+        headers = {
+            'X-API-KEY': self.config.serper_api_key,
+            'Content-Type': 'application/json'
+        }
+
+        try:
+            import requests
+            response = requests.post(url, headers=headers, data=payload, timeout=10)
+            if response.status_code != 200:
+                logger.error(f"Serper API failed: {response.text}")
+                return self.respond_json({"error": "Search API failed"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+            
+            data = response.json()
+            images = data.get("images", [])
+            
+            # Filter for reasonable images (squares, or portrait bottle aspect ratios)
+            valid_images = [
+                img["imageUrl"] for img in images 
+                if img.get("imageWidth", 1) / img.get("imageHeight", 1) <= 1.5
+            ]
+            if not valid_images:
+                valid_images = [img["imageUrl"] for img in images]
+
+            if not valid_images:
+                return self.respond_json({"error": "No images found"}, status=HTTPStatus.NOT_FOUND)
+            
+            best_image = valid_images[0]
+
+            with self.db() as conn:
+                conn.execute(
+                    "UPDATE import_row SET image_url=%s WHERE id=%s",
+                    (best_image, row_id)
+                )
+                conn.commit()
+
+            return self.respond_json({"image_url": best_image})
+        except Exception as e:
+            logger.error(f"Image search exception: {e}")
+            return self.respond_json({"error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def handle_n8n_quote_result(self) -> None:
         payload = self.read_json_body()
