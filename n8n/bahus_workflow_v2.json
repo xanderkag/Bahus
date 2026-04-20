@@ -2,13 +2,6 @@
   "name": "Bahus",
   "nodes": [
     {
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "bakhus-pdf-import",
-        "options": {
-          "allowedOrigins": "https://bahus.vercel.app"
-        }
-      },
       "id": "6f9471b3-9a70-4cbf-bb78-180b9f64420b",
       "name": "Webhook: PDF Entry2",
       "type": "n8n-nodes-base.webhook",
@@ -17,134 +10,115 @@
         80,
         420
       ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bakhus-pdf-import",
+        "options": {
+          "allowedOrigins": "https://bahus.vercel.app"
+        }
+      },
       "webhookId": "bakhus-pdf-import"
     },
     {
-      "parameters": {
-        "jsCode": "const body = $input.item.json.body || $input.item.json || {};\nconst file = $input.item.binary?.file || $input.item.binary?.data;\nconst source = body.source || 'import';\nconst importId = body.import_batch_id || body.import_id || body.quote_id || `IMP_${Date.now()}`;\nconst jobId = body.job_id || `job_${Date.now()}`;\n\nconst successUrl = body.callbackSuccessUrl || body.callbacks?.success_url;\nconst failedUrl = body.callbackFailedUrl || body.callbacks?.failed_url;\n\nif (!successUrl) {\n  throw new Error(\"Missing callbackSuccessUrl in webhook payload!\");\n}\n\nconst filename = file?.fileName || file?.name || body.filename || 'document.pdf';\nconst rawMime = (file?.mimeType || file?.mimetype || '').toLowerCase();\nconst extIsPdf = filename.toLowerCase().endsWith('.pdf');\n\n// Accept application/pdf, application/octet-stream with .pdf ext, or any missing mime with .pdf ext\nconst isPdf = rawMime === 'application/pdf' || extIsPdf || rawMime.includes('pdf');\nconst mimeType = isPdf ? 'application/pdf' : (rawMime || 'unknown');\n\nreturn {\n  json: {\n    importId,\n    jobId,\n    filename,\n    mime_type: mimeType,\n    is_pdf: isPdf,\n    callbackSuccessUrl: successUrl,\n    callbackFailedUrl: failedUrl,\n    source,\n    source_format: 'pdf'\n  },\n  binary: $input.item.binary\n};"
-      },
-      "id": "b3ae0ada-4afe-4575-8759-b12abdbcb14d",
-      "name": "Metadata & Validation2",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "id": "05f345e6-8d68-4968-86e7-2eebbf43a21f",
+      "name": "Extract Metadata",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
       "position": [
         300,
         420
-      ]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "string": [
-            {
-              "value1": "={{ $json.mime_type }}",
-              "value2": "application/pdf"
-            }
-          ]
-        }
-      },
-      "id": "5d9c7c9e-98b5-4730-883e-b014bff17edb",
-      "name": "If: Is PDF?1",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [
-        520,
-        420
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const meta = $(\"Metadata & Validation2\").first().json;\nlet extractedRows = [];\nlet errorMessage = null;\n\ntry {\n  let rawText = $(\"OpenAI Assistants API\").first().json.choices[0].message.content;\n  if (rawText.includes(\"```json\")) {\n     rawText = rawText.replace(/```json/g, \"\").replace(/```/g, \"\").trim();\n  }\n  console.log('raw:', rawText);\n  const parsed = JSON.parse(rawText);\n  extractedRows = Array.isArray(parsed) ? parsed : (parsed.rows || []);\n} catch(e) {\n  errorMessage = \"Ошибка обработки ИИ: \" + e.message + \". Возможно, текст слишком большой или файл поврежден.\";\n}\n\nif (!errorMessage && (!extractedRows || extractedRows.length === 0)) {\n  errorMessage = \"Не удалось распознать товарные позиции. Убедитесь, что файл содержит список товаров, или что текст (кодировка) читаем, а не зашифрован как картинка.\";\n}\n\nif (errorMessage) {\n  return {\n    json: {\n      import_batch_id: meta.importId,\n      job_id: meta.jobId,\n      status: \"failed\",\n      error: errorMessage,\n      callbackFailedUrl: meta.callbackFailedUrl\n    }\n  };\n}\n\nreturn {\n  json: {\n    import_batch_id: meta.importId,\n    job_id: meta.jobId,\n    status: \"parsed\",\n    rows: extractedRows,\n    callbackSuccessUrl: meta.callbackSuccessUrl\n  }\n};"
-      },
-      "id": "0e43af2a-6632-4bb3-8041-becb74fefb96",
-      "name": "Format Success1",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1180,
-        420
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $json.status === 'failed' ? $json.callbackFailedUrl : $json.callbackSuccessUrl }}",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ $json }}",
-        "options": {}
-      },
-      "id": "5eda3ff4-2556-4472-bba5-c45acb97d526",
-      "name": "Callback Success1",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [
-        1400,
-        420
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "return {\n  json: {\n    import_batch_id: $input.item.json.importId,\n    job_id: $input.item.json.jobId,\n    status: \"failed\",\n    error: \"Неподдерживаемый формат: \" + $input.item.json.mime_type + \". Загрузите PDF-файл.\",\n    callbackFailedUrl: $input.item.json.callbackFailedUrl\n  }\n};"
-      },
-      "id": "849b01be-8fdf-4792-910f-0c6f132064d5",
-      "name": "Format Error1",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        740,
-        600
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $json.callbackFailedUrl || 'http://localhost' }}",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ $json }}",
-        "options": {}
-      },
-      "id": "fae8375a-9cf1-40c2-aa29-8a8274825883",
-      "name": "Callback Error1",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [
-        960,
-        600
-      ]
-    },
-    {
+      ],
       "parameters": {
         "assignments": {
           "assignments": [
             {
-              "id": "c60ec52e-c5fe-4f11-9257-2eec3031061c",
+              "id": "135592d4-bc2a-46f0-a4ff-705e7e81bd8f",
               "name": "openaiKey",
               "value": "={{ $env.OPENAI_API_KEY }}",
               "type": "string"
+            },
+            {
+              "id": "37e793f8-cd6b-4730-a188-599a1d4403f6",
+              "name": "importId",
+              "value": "={{ $json.body?.import_batch_id || $json.body?.import_id || ('IMP_' + Date.now()) }}",
+              "type": "string"
+            },
+            {
+              "id": "374bc1b4-ddc4-4ed8-9365-666c3c6dbf72",
+              "name": "jobId",
+              "value": "={{ $json.body?.job_id || ('job_' + Date.now()) }}",
+              "type": "string"
+            },
+            {
+              "id": "a557c86d-2fd1-4b08-be80-d262aec7dd70",
+              "name": "callbackSuccessUrl",
+              "value": "={{ $json.body?.callbackSuccessUrl }}",
+              "type": "string"
+            },
+            {
+              "id": "d0b6dff4-63a6-4f4a-8f01-6db99306b421",
+              "name": "callbackFailedUrl",
+              "value": "={{ $json.body?.callbackFailedUrl }}",
+              "type": "string"
+            },
+            {
+              "id": "93a5afd4-a6d8-45d2-9b90-856cde22952e",
+              "name": "filename",
+              "value": "={{ $binary?.file?.fileName || 'document.pdf' }}",
+              "type": "string"
+            },
+            {
+              "id": "9dc4a21c-6cfa-4846-bbfc-6f86a9d3aaf4",
+              "name": "is_pdf",
+              "value": "={{ !!($binary?.file?.mimeType?.includes('pdf') || $binary?.file?.fileName?.toLowerCase()?.endsWith('.pdf')) }}",
+              "type": "boolean"
             }
           ]
         },
-        "options": {}
-      },
-      "id": "set-api-key-node",
-      "name": "Inject API Key",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        680,
-        420
-      ]
+        "options": {
+          "includeBinary": true
+        }
+      }
     },
     {
-      "id": "007a205a-cc94-42bd-9a43-e67394fefa22",
+      "id": "5d9c7c9e-98b5-4730-883e-b014bff17edb",
+      "name": "If: Is PDF?1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        520,
+        420
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "21ec5d81-1741-4d3d-9a71-229641791e7b",
+              "leftValue": "={{ $json.is_pdf }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "4b4063e7-977b-4f23-8713-0e252a8971d9",
       "name": "Upload File to OpenAI",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
       "position": [
-        860,
-        420
+        740,
+        300
       ],
       "parameters": {
         "method": "POST",
@@ -154,7 +128,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $('Inject API Key').first().json.openaiKey }}"
+              "value": "=Bearer {{ $json.openaiKey }}"
             }
           ]
         },
@@ -177,34 +151,95 @@
       }
     },
     {
-      "id": "fc247dcf-84c8-400b-b9f5-cce1bb46889f",
+      "id": "2300785d-d884-411a-8b17-987614a51be3",
       "name": "OpenAI Assistants API",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1060,
-        420
+        960,
+        300
       ],
       "parameters": {
-        "jsCode": "const meta = $(\"Metadata & Validation2\").first().json;\nconst openaiKey = $(\"Inject API Key\").first().json.openaiKey;\nif (!openaiKey) throw new Error(\"Missing OPENAI_API_KEY\");\n\n// fileId comes from the HTTP Request node that uploaded the file\nconst uploadResult = $(\"Upload File to OpenAI\").first().json;\nconst fileId = uploadResult.id;\nif (!fileId) throw new Error(\"File upload response missing id: \" + JSON.stringify(uploadResult));\n\nconst prompt = `You are a master data extractor. Extract ALL product rows from this price list into strict JSON.\nFormat: {\"rows\": [{\"name\":\"...\",\"article\":\"...\",\"qty\":1,\"purchase_price\":100,\"volume_l\":0.75,\"country\":\"...\",\"category\":\"...\",\"note\":\"...\"}]}\nRules: respond ONLY with valid JSON, no markdown fences, no explanation. If a field is unknown use null.`;\n\nconst headers = {\n  \"Authorization\": `Bearer ${openaiKey}`,\n  \"OpenAI-Beta\": \"assistants=v2\",\n  \"Content-Type\": \"application/json\"\n};\n\n// 1. Create assistant\nconst aResp = await fetch(\"https://api.openai.com/v1/assistants\", {\n  method: \"POST\", headers,\n  body: JSON.stringify({\n    name: \"BahusExtractorTemp\",\n    model: \"gpt-4o\",\n    instructions: prompt,\n    tools: [{ type: \"file_search\" }],\n    tool_resources: { file_search: { vector_stores: [{ file_ids: [fileId] }] } }\n  })\n});\nif (!aResp.ok) throw new Error(\"Create assistant failed: \" + await aResp.text());\nconst assistantId = (await aResp.json()).id;\n\nlet threadId, runId;\ntry {\n  // 2. Create thread + run (one call)\n  const runResp = await fetch(\"https://api.openai.com/v1/threads/runs\", {\n    method: \"POST\", headers,\n    body: JSON.stringify({\n      assistant_id: assistantId,\n      thread: {\n        messages: [{ role: \"user\", content: \"Extract all product rows. Return ONLY JSON.\" }]\n      },\n      response_format: { type: \"json_object\" }\n    })\n  });\n  if (!runResp.ok) throw new Error(\"Create run failed: \" + await runResp.text());\n  const runRes = await runResp.json();\n  threadId = runRes.thread_id;\n  runId = runRes.id;\n\n  // 3. Poll until completed (max 90 × 3s = 4.5 min)\n  let status = runRes.status;\n  let attempts = 0;\n  while ((status === \"queued\" || status === \"in_progress\") && attempts < 90) {\n    await new Promise(r => setTimeout(r, 3000));\n    attempts++;\n    const p = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${runId}`, { headers });\n    const pj = await p.json();\n    status = pj.status;\n    if ([\"failed\",\"cancelled\",\"expired\"].includes(status)) {\n      throw new Error(`Run ${status}: ${JSON.stringify(pj.last_error || {})}`);\n    }\n  }\n  if (status !== \"completed\") throw new Error(`Run timed out after ${attempts} polls, status=${status}`);\n\n  // 4. Get messages\n  const msgResp = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, { headers });\n  const msgs = await msgResp.json();\n  const block = msgs.data?.[0]?.content?.find(c => c.type === \"text\");\n  const rawText = block ? block.text.value : '{\"rows\":[]}';\n\n  // 5. Cleanup (fire & forget)\n  fetch(`https://api.openai.com/v1/assistants/${assistantId}`, { method: \"DELETE\", headers }).catch(() => {});\n  fetch(`https://api.openai.com/v1/files/${fileId}`, { method: \"DELETE\", headers: { Authorization: `Bearer ${openaiKey}` } }).catch(() => {});\n\n  return { json: { choices: [{ message: { content: rawText } }] } };\n\n} catch(e) {\n  // Cleanup on error\n  if (assistantId) fetch(`https://api.openai.com/v1/assistants/${assistantId}`, { method: \"DELETE\", headers }).catch(() => {});\n  if (fileId) fetch(`https://api.openai.com/v1/files/${fileId}`, { method: \"DELETE\", headers: { Authorization: `Bearer ${openaiKey}` } }).catch(() => {});\n  throw e;\n}",
+        "jsCode": "// All JSON — no binary access needed here\nconst openaiKey = $('Extract Metadata').first().json.openaiKey;\nconst meta = $('Extract Metadata').first().json;\n\n// fileId comes from the previous HTTP Request node (Upload File to OpenAI)\nconst uploadResult = $input.first().json;\nconst fileId = uploadResult.id;\nif (!openaiKey) throw new Error(\"Missing OPENAI_API_KEY — check n8n env vars\");\nif (!fileId) throw new Error(\"No fileId from upload step: \" + JSON.stringify(uploadResult));\n\nconst headers = {\n  \"Authorization\": `Bearer ${openaiKey}`,\n  \"OpenAI-Beta\": \"assistants=v2\",\n  \"Content-Type\": \"application/json\"\n};\n\nconst prompt = `You are a master data extractor. Extract ALL product rows from this price list.\nOutput ONLY a valid JSON object (no markdown, no fences):\n{\"rows\": [{\"name\":\"...\",\"article\":\"...\",\"qty\":1,\"purchase_price\":100,\"volume_l\":0.75,\"country\":\"...\",\"category\":\"...\",\"note\":\"...\"}]}\nIf a field value is unknown use null.`;\n\n// 1. Create assistant\nconst aResp = await fetch(\"https://api.openai.com/v1/assistants\", {\n  method: \"POST\", headers,\n  body: JSON.stringify({\n    name: \"BahusExtractorTemp\",\n    model: \"gpt-4o\",\n    instructions: prompt,\n    tools: [{ type: \"file_search\" }],\n    tool_resources: { file_search: { vector_stores: [{ file_ids: [fileId] }] } }\n  })\n});\nif (!aResp.ok) throw new Error(\"Create assistant failed: \" + await aResp.text());\nconst assistantId = (await aResp.json()).id;\nlet threadId, runId;\n\ntry {\n  // 2. Create thread + run in one call\n  const runResp = await fetch(\"https://api.openai.com/v1/threads/runs\", {\n    method: \"POST\", headers,\n    body: JSON.stringify({\n      assistant_id: assistantId,\n      thread: { messages: [{ role: \"user\", content: \"Extract all product rows. Return ONLY JSON.\" }] },\n      response_format: { type: \"json_object\" }\n    })\n  });\n  if (!runResp.ok) throw new Error(\"Create run failed: \" + await runResp.text());\n  const runRes = await runResp.json();\n  threadId = runRes.thread_id;\n  runId = runRes.id;\n\n  // 3. Poll (max 90 × 3s = ~4.5 min)\n  let status = runRes.status;\n  let attempts = 0;\n  while ((status === \"queued\" || status === \"in_progress\") && attempts < 90) {\n    await new Promise(r => setTimeout(r, 3000));\n    attempts++;\n    const p = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${runId}`, { headers });\n    const pj = await p.json();\n    status = pj.status;\n    if ([\"failed\",\"cancelled\",\"expired\"].includes(status))\n      throw new Error(`Run ${status}: ${JSON.stringify(pj.last_error || {})}`);\n  }\n  if (status !== \"completed\") throw new Error(`Timed out after ${attempts} polls, status=${status}`);\n\n  // 4. Get assistant reply\n  const msgResp = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, { headers });\n  const msgs = await msgResp.json();\n  const block = msgs.data?.[0]?.content?.find(c => c.type === \"text\");\n  const rawText = block ? block.text.value : '{\"rows\":[]}';\n\n  // 5. Cleanup (fire & forget)\n  fetch(`https://api.openai.com/v1/assistants/${assistantId}`, { method: \"DELETE\", headers }).catch(() => {});\n  fetch(`https://api.openai.com/v1/files/${fileId}`, { method: \"DELETE\", headers: { Authorization: `Bearer ${openaiKey}` } }).catch(() => {});\n\n  // 6. Parse + return for downstream Format Success node\n  let rows = [];\n  try {\n    const parsed = JSON.parse(rawText);\n    rows = Array.isArray(parsed) ? parsed : (parsed.rows || []);\n  } catch(e) {\n    throw new Error(\"Failed to parse AI response as JSON: \" + rawText.slice(0, 200));\n  }\n\n  return { json: { choices: [{ message: { content: JSON.stringify({ rows }) } }] } };\n\n} catch(e) {\n  // Cleanup on any error\n  if (assistantId) fetch(`https://api.openai.com/v1/assistants/${assistantId}`, { method: \"DELETE\", headers }).catch(() => {});\n  if (fileId) fetch(`https://api.openai.com/v1/files/${fileId}`, { method: \"DELETE\", headers: { Authorization: `Bearer ${openaiKey}` } }).catch(() => {});\n  throw e;\n}",
         "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "0e43af2a-6632-4bb3-8041-becb74fefb96",
+      "name": "Format Success1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1180,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const meta = $('Extract Metadata').first().json;\nlet extractedRows = [];\nlet errorMessage = null;\ntry {\n  let rawText = $input.first().json.choices[0].message.content;\n  if (rawText.includes(\"```\")) rawText = rawText.replace(/```json?/g,\"\").replace(/```/g,\"\").trim();\n  const parsed = JSON.parse(rawText);\n  extractedRows = Array.isArray(parsed) ? parsed : (parsed.rows || []);\n} catch(e) {\n  errorMessage = \"Parse error: \" + e.message;\n}\nif (!errorMessage && extractedRows.length === 0) errorMessage = \"No rows extracted from document\";\nif (errorMessage) {\n  return { json: { import_batch_id: meta.importId, job_id: meta.jobId, status: \"failed\", error: errorMessage, callbackFailedUrl: meta.callbackFailedUrl } };\n}\nreturn { json: { import_batch_id: meta.importId, job_id: meta.jobId, status: \"parsed\", rows: extractedRows, callbackSuccessUrl: meta.callbackSuccessUrl } };"
+      }
+    },
+    {
+      "id": "5eda3ff4-2556-4472-bba5-c45acb97d526",
+      "name": "Callback Success1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1400,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.status === 'failed' ? $json.callbackFailedUrl : $json.callbackSuccessUrl }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "849b01be-8fdf-4792-910f-0c6f132064d5",
+      "name": "Format Error1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        740,
+        560
+      ],
+      "parameters": {
+        "jsCode": "const meta = $('Extract Metadata').first().json;\nreturn { json: {\n  import_batch_id: meta.importId, job_id: meta.jobId,\n  status: \"failed\",\n  error: \"Unsupported format: \" + $json.filename + \". Only PDF files are accepted.\",\n  callbackFailedUrl: meta.callbackFailedUrl\n}};"
+      }
+    },
+    {
+      "id": "fae8375a-9cf1-40c2-aa29-8a8274825883",
+      "name": "Callback Error1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        960,
+        560
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.callbackFailedUrl || 'http://localhost' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
       }
     }
   ],
-  "pinData": {},
   "connections": {
     "Webhook: PDF Entry2": {
       "main": [
         [
           {
-            "node": "Metadata & Validation2",
+            "node": "Extract Metadata",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Metadata & Validation2": {
+    "Extract Metadata": {
       "main": [
         [
           {
@@ -219,7 +254,7 @@
       "main": [
         [
           {
-            "node": "Inject API Key",
+            "node": "Upload File to OpenAI",
             "type": "main",
             "index": 0
           }
@@ -227,6 +262,28 @@
         [
           {
             "node": "Format Error1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload File to OpenAI": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Assistants API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Assistants API": {
+      "main": [
+        [
+          {
+            "node": "Format Success1",
             "type": "main",
             "index": 0
           }
@@ -254,50 +311,18 @@
           }
         ]
       ]
-    },
-    "OpenAI Assistants API": {
-      "main": [
-        [
-          {
-            "node": "Format Success1",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Inject API Key": {
-      "main": [
-        [
-          {
-            "node": "Upload File to OpenAI",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upload File to OpenAI": {
-      "main": [
-        [
-          {
-            "node": "OpenAI Assistants API",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
     }
   },
   "active": true,
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "4735a795-0092-4673-93d2-424410b8c02a",
+  "versionId": "e59af99b-898c-4e91-a97c-49b4adc2688d",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "51d051e70d2b12662cc651b60a17f803b90e11a48474f8b2af1538dc38b1641a"
   },
   "id": "3susCJ9GqBmEiNwq",
-  "tags": []
+  "tags": [],
+  "pinData": {}
 }
