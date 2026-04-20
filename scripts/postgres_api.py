@@ -792,7 +792,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 """
                 select id, type, target_type, target_id, status, updated_at
                 from job_run
-                order by uploaded_at desc
+                order by updated_at desc
                 limit 50
                 """
             ).fetchall()
@@ -1130,7 +1130,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 with self.db() as conn_bg:
                     conn_bg.execute(
                         "update job_run set status=%s, finished_at=now(), updated_at=now() where id=%s",
-                        ("done" if status == "parsed" else "error", job_id),
+                        ("done" if status == "parsed" else "failed", job_id),
                     )
                     conn_bg.execute(
                         """
@@ -1175,7 +1175,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                         (import_id,),
                     )
                     conn_err.execute(
-                        "update job_run set status='error', finished_at=now() where id=%s", (job_id,)
+                        "update job_run set status='failed', finished_at=now() where id=%s", (job_id,)
                     )
                     conn_err.commit()
 
@@ -1789,7 +1789,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 select
                   id, client_id, quote_number, quote_date, mode, status, note
                 from quote_document
-                order by uploaded_at desc
+                order by updated_at desc
                 limit 100
                 '''
             ).fetchall()
