@@ -266,26 +266,28 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             return self.handle_dispatch_import(route.split("/")[3])
         if route == "/api/debug/test":
             try:
-                import psycopg
+                key = self.config.openai_api_key
+                env_check = {
+                    "OPENAI_API_KEY_in_os": os.getenv("OPENAI_API_KEY", "NOT SET")[:10] + "..." if os.getenv("OPENAI_API_KEY") else "NOT SET",
+                    "config.openai_api_key": (key[:10] + "...") if key else "NOT SET",
+                    "N8N_URL": os.getenv("N8N_IMPORT_WEBHOOK_URL", "NOT SET")[:30],
+                }
                 log = []
                 with self.db() as conn:
                     try:
                         conn.execute("ALTER TABLE import_file ADD COLUMN IF NOT EXISTS file_bytes BYTEA;")
                         conn.execute("ALTER TABLE import_file ADD COLUMN IF NOT EXISTS cleanup_done BOOLEAN DEFAULT FALSE;")
                         conn.commit()
-                        log.append("Migration successful")
+                        log.append("Migration ok")
                     except Exception as e:
                         log.append(f"Migration error: {e}")
-                
                     col = conn.execute("SELECT column_name FROM information_schema.columns WHERE table_name='import_file' AND column_name='file_bytes'").fetchone()
-                    rows = []
-                    if col:
-                        rows = conn.execute("SELECT id, original_name, size_bytes, length(file_bytes) as bytes_len FROM import_file ORDER BY uploaded_at DESC LIMIT 3").fetchall()
-                    
-                return self.respond_json({"log": log, "column_exists": bool(col), "files": [dict(r) for r in rows]})
+                    rows = conn.execute("SELECT id, original_name, size_bytes, length(file_bytes) as bytes_len FROM import_file ORDER BY uploaded_at DESC LIMIT 3").fetchall()
+                return self.respond_json({"env": env_check, "log": log, "column_exists": bool(col), "files": [dict(r) for r in rows]})
             except Exception as e:
                 import traceback
                 return self.respond_json({"error": str(e), "trace": traceback.format_exc()})
+
 
 
 
