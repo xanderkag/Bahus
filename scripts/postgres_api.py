@@ -267,7 +267,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 import os
                 files_found = os.listdir(UPLOADS_DIR) if UPLOADS_DIR.exists() else []
                 with self.db() as conn:
-                    rows = conn.execute("select id, original_name, storage_path, file_kind from import_file order by created_at desc limit 2").fetchall()
+                    rows = conn.execute("select id, original_name, storage_path, file_kind from import_file order by uploaded_at desc limit 2").fetchall()
                     db_files = [dict(r) for r in rows]
                 return self.respond_json({"uploads_dir": str(UPLOADS_DIR), "files": files_found, "db": db_files})
             except Exception as e:
@@ -773,7 +773,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 """
                 select id, type, target_type, target_id, status, updated_at
                 from job_run
-                order by created_at desc
+                order by uploaded_at desc
                 limit 50
                 """
             ).fetchall()
@@ -1635,7 +1635,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 select
                   id, client_id, quote_number, quote_date, mode, status, note
                 from quote_document
-                order by created_at desc
+                order by uploaded_at desc
                 limit 100
                 '''
             ).fetchall()
