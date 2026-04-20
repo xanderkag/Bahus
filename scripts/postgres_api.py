@@ -274,6 +274,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             try:
                 key = self.config.openai_api_key
                 env_check = {
+                    "deployed_at": "TIME_MARKER_22_44",
                     "OPENAI_API_KEY_in_os": os.getenv("OPENAI_API_KEY", "NOT SET")[:10] + "..." if os.getenv("OPENAI_API_KEY") else "NOT SET",
                     "config.openai_api_key": (key[:10] + "...") if key else "NOT SET",
                     "N8N_URL": os.getenv("N8N_IMPORT_WEBHOOK_URL", "NOT SET")[:30],
