@@ -1219,12 +1219,22 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         auth_header = {"Authorization": f"Bearer {api_key}"}
         json_header = {**auth_header, "Content-Type": "application/json"}
         prompt = (
-            "You are a master data extractor. Extract ALL product rows from this price list document. "
-            'Output ONLY a valid JSON object, no markdown, no fences: '
-            '{"rows": [{"name":"product","article":"SKU","purchase_price":100,'
-            '"volume_l":0.75,"country":"Russia","category":"Wine","note":null,"promo":false}]} '
-            "Rules: extract every single product. Use null for unknown fields. "
-            "purchase_price must be a number in RUB. volume_l must be decimal (0.75 = 750ml)."
+            "You are a professional data extraction specialist. Your task: extract EVERY SINGLE product row "
+            "from this price list document. Do NOT stop early, do NOT skip rows, do NOT summarize. "
+            "Count all rows in the source document and make sure your output has the same count. "
+            "Output ONLY a valid JSON object with no markdown, no fences, no commentary: "
+            '{"rows": [{"name":"Whisky 12yo","article":"ART-001","purchase_price":1590,'
+            '"volume_l":0.7,"country":"Scotland","category":"Whiskey","note":null,"promo":false}]} '
+            "Field rules:\n"
+            "- name: full product name including brand and age/vintage\n"
+            "- article: SKU/article number if present, else null\n"
+            "- purchase_price: numeric price in RUB (the purchase/net price column), null if absent\n"
+            "- volume_l: volume in litres as decimal (750ml=0.75, 1L=1.0, 1.5L=1.5), null if absent\n"
+            "- country: country of origin, null if absent\n"
+            "- category: wine/whiskey/vodka/cognac/champagne/beer/other\n"
+            "- note: any special notes or promo text, null if absent\n"
+            "- promo: true if marked as promo/акция, false otherwise\n"
+            "CRITICAL: extract ALL rows. If the document has 50 products, return 50 rows."
         )
 
         # 1. Upload file (user_data purpose for Chat Completions)
@@ -1256,7 +1266,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 "https://api.openai.com/v1/chat/completions",
                 headers=json_header,
                 json={
-                    "model": "gpt-4o",
+                    "model": "gpt-4.1",
                     "messages": [{
                         "role": "user",
                         "content": [
@@ -1265,9 +1275,9 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                         ],
                     }],
                     "response_format": {"type": "json_object"},
-                    "max_tokens": 8000,
+                    "max_tokens": 32000,
                 },
-                timeout=120,
+                timeout=180,
             )
             # Fallback: base64 inline for files <= 10MB
             if not resp.ok and len(file_bytes) <= 10 * 1024 * 1024:
@@ -1278,7 +1288,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                     "https://api.openai.com/v1/chat/completions",
                     headers=json_header,
                     json={
-                        "model": "gpt-4o",
+                        "model": "gpt-4.1",
                         "messages": [{
                             "role": "user",
                             "content": [
@@ -1289,9 +1299,9 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                             ],
                         }],
                         "response_format": {"type": "json_object"},
-                        "max_tokens": 8000,
+                        "max_tokens": 32000,
                     },
-                    timeout=120,
+                    timeout=180,
                 )
 
             if not resp.ok:
