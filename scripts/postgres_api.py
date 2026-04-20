@@ -1190,17 +1190,18 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             )
             conn.commit()
 
-        # ── 3. Analyze PDF → pick extraction mode ────────────────────────────
-        extract_mode, pdf_payload = self._analyze_pdf(file_bytes, filename)
-        n8n_logger.info(f"[AI] dispatch import={import_id} file={filename} mode={extract_mode}")
-
         api_key = self.config.openai_api_key
         if not api_key:
             raise ValueError("OPENAI_API_KEY is not configured")
 
-        # ── 4. Run extraction in background thread ────────────────────────────
+        # ── 3. Run analysis and extraction in background thread ────────────────
         def _bg_extract():
             try:
+                # Analyze PDF here so we don't block the HTTP POST response!
+                # Rendering 28+ pages for Vision/heuristic can take minutes and cause 504 timeouts.
+                extract_mode, pdf_payload = self._analyze_pdf(file_bytes, filename)
+                n8n_logger.info(f"[AI] dispatch import={import_id} file={filename} mode={extract_mode}")
+
                 rows = self._chat_completions_extract(api_key, extract_mode, pdf_payload, filename, import_id)
                 status = "parsed" if rows else "failed"
                 error = None if rows else "No rows extracted"
@@ -1210,7 +1211,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             self._save_extraction_result(import_id, job_id, file_id_db, rows, status, error)
 
         threading.Thread(target=_bg_extract, daemon=True, name=f"ai-extract-{import_id[:8]}").start()
-        return {"import_id": import_id, "job_id": job_id, "status": "processing", "extract_mode": extract_mode}
+        return {"import_id": import_id, "job_id": job_id, "status": "processing", "extract_mode": "analyzing"}
 
     # ── PDF Analysis ──────────────────────────────────────────────────────────
 
