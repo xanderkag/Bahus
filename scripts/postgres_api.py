@@ -1297,9 +1297,21 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 None,
             )
             raw_text = block["text"]["value"] if block else '{"rows":[]}'
-            n8n_logger.info(f"[AI] Reply received, length={len(raw_text)}")
+            n8n_logger.info(f"[AI] Reply received, length={len(raw_text)}, raw={raw_text[:500]}")
 
-            parsed = json.loads(raw_text)
+            # Strip markdown fences and citation annotations from file_search
+            import re
+            cleaned = raw_text.strip()
+            cleaned = re.sub(r'【[^】]*】', '', cleaned)  # remove 【4:0†source】 annotations
+            if cleaned.startswith("```"):
+                cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned)
+                cleaned = re.sub(r'\s*```\s*$', '', cleaned)
+            cleaned = cleaned.strip()
+
+            if not cleaned or cleaned[0] not in ('{', '['):
+                return [], f"AI did not return valid JSON. Raw response: {raw_text[:300]}"
+
+            parsed = json.loads(cleaned)
             rows = parsed if isinstance(parsed, list) else (parsed.get("rows") or [])
             return rows, None
 
