@@ -45,7 +45,7 @@ export const PRODUCT_COLUMN_DEFS = {
     `
   },
   "article": {
-    renderTh: () => `<th>Артикул</th>`,
+    renderTh: (renderHeader, renderMenu) => `<th class="filterable-th">${renderHeader("Артикул", "article")}${renderMenu("article")}</th>`,
     renderTd: (product, importRecord, supplier, formatValue) => `<td>${escapeHtml(formatValue(product.article))}</td>`
   },
   "code": {
@@ -53,7 +53,7 @@ export const PRODUCT_COLUMN_DEFS = {
     renderTd: (product, importRecord, supplier, formatValue) => `<td>${escapeHtml(formatValue(product.product_id || product.temp_id))}</td>`
   },
   "supplier": {
-    renderTh: () => `<th>Поставщик</th>`,
+    renderTh: (renderHeader, renderMenu) => `<th class="filterable-th">${renderHeader("Поставщик", "supplier")}${renderMenu("supplier")}</th>`,
     renderTd: (product, importRecord, supplier, formatValue) => `
       <td>
         <div class="table-title">${escapeHtml(formatValue(supplier?.name))}</div>
@@ -61,7 +61,7 @@ export const PRODUCT_COLUMN_DEFS = {
     `
   },
   "validity": {
-    renderTh: () => `<th>Актуальность</th>`,
+    renderTh: (renderHeader, renderMenu) => `<th class="filterable-th">${renderHeader("Актуальность", "validity")}${renderMenu("validity")}</th>`,
     renderTd: (product, importRecord, supplier, formatValue) => `
       <td>
         <div class="table-title">с ${escapeHtml(formatValue(importRecord?.meta?.import_date))}</div>
@@ -78,7 +78,7 @@ export const PRODUCT_COLUMN_DEFS = {
     renderTd: (product, importRecord, supplier, formatValue) => `<td>${escapeHtml(formatValue(product.category))}</td>`
   },
   "document_type": {
-    renderTh: () => `<th>Тип</th>`,
+    renderTh: (renderHeader, renderMenu) => `<th class="filterable-th">${renderHeader("Тип", "document_type")}${renderMenu("document_type")}</th>`,
     renderTd: (product, importRecord) => `<td>${escapeHtml(formatDocumentType(importRecord?.meta?.document_type))}</td>`
   },
   "volume_l": {

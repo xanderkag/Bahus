@@ -344,6 +344,8 @@ function renderColumnMenu(state, filterOptions, column) {
     promo: filterOptions.promo,
     issues: filterOptions.issues,
     review_status: filterOptions.reviewStatus,
+    supplier: filterOptions.suppliers?.map((value) => ({ value, label: value })) || [],
+    document_type: filterOptions.documentTypes?.map((value) => ({ value, label: formatDocumentType(value) })) || [],
   };
 
   const contentByColumn = {
@@ -353,6 +355,30 @@ function renderColumnMenu(state, filterOptions, column) {
         <input class="input input-compact" placeholder="Поиск по названию" value="${escapeHtml(state.ui.filters.name)}" data-input="setFilter" data-field="name" />
       </div>
       ${renderColumnMenuFooter("name")}
+    `,
+    article: `
+      ${renderSortControls(column, state.ui.sort)}
+      <div class="column-menu-search">
+        <input class="input input-compact" placeholder="Поиск по артикулу" value="${escapeHtml(state.ui.filters.article)}" data-input="setFilter" data-field="article" />
+      </div>
+      ${renderColumnMenuFooter("article")}
+    `,
+    supplier: `
+      ${renderSortControls(column, state.ui.sort)}
+      ${renderChoiceList("supplier", categoricalOptions.supplier, state.ui.filters.supplier || [])}
+      ${renderColumnMenuFooter("supplier")}
+    `,
+    document_type: `
+      ${renderSortControls(column, state.ui.sort)}
+      ${renderChoiceList("document_type", categoricalOptions.document_type, state.ui.filters.document_type || [])}
+      ${renderColumnMenuFooter("document_type")}
+    `,
+    validity: `
+      ${renderSortControls(column, state.ui.sort)}
+      <div class="column-menu-search">
+        <input class="input input-compact" placeholder="Поиск по дате" value="${escapeHtml(state.ui.filters.validity)}" data-input="setFilter" data-field="validity" />
+      </div>
+      ${renderColumnMenuFooter("validity")}
     `,
     code: `
       ${renderSortControls(column, state.ui.sort)}
@@ -429,7 +455,11 @@ function renderColumnMenu(state, filterOptions, column) {
                               : column === "client_price" ? "Цена клиенту"
                                 : column === "margin_rub" ? "Маржа"
                                   : column === "margin_pct" ? "Маржа %"
-                                    : column
+                                    : column === "supplier" ? "Поставщик"
+                                      : column === "article" ? "Артикул"
+                                        : column === "document_type" ? "Тип"
+                                          : column === "validity" ? "Актуальность"
+                                            : column
         )}</strong>
         <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn" data-action="toggleColumnFilter" data-column="${column}" aria-label="Закрыть фильтр">×</button>
       </div>

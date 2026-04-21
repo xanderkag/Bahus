@@ -38,6 +38,10 @@ export function getVisibleProducts(state) {
   const selectedPromo = new Set(state.ui.filters.promo || []);
   const selectedIssues = new Set(state.ui.filters.issues || []);
   const selectedReview = new Set(state.ui.filters.review_status || []);
+  const selectedSuppliers = new Set(state.ui.filters.supplier || []);
+  const selectedDocumentTypes = new Set(state.ui.filters.document_type || []);
+  const validityQuery = normalizeText(state.ui.filters.validity);
+  const articleQuery = normalizeText(state.ui.filters.article);
   const productSearchQuery = normalizeText(state.ui.productSearchQuery || "");
 
   return filterBase
@@ -77,6 +81,25 @@ export function getVisibleProducts(state) {
       if (selectedIssues.size && !selectedIssues.has(issueToken)) return false;
 
       if (
+        articleQuery &&
+        !normalizeText(product.article).includes(articleQuery)
+      ) {
+        return false;
+      }
+
+      const supplierName = state.entities.suppliersById[state.entities.importsById[product.import_id]?.supplier_id]?.name;
+      if (selectedSuppliers.size && !selectedSuppliers.has(supplierName)) return false;
+
+      const docType = state.entities.importsById[product.import_id]?.meta?.document_type;
+      if (selectedDocumentTypes.size && !selectedDocumentTypes.has(docType)) return false;
+
+      if (validityQuery) {
+        const importDate = state.entities.importsById[product.import_id]?.meta?.import_date;
+        const periodStr = state.entities.importsById[product.import_id]?.meta?.period;
+        if (!normalizeText(importDate).includes(validityQuery) && !normalizeText(periodStr).includes(validityQuery)) return false;
+      }
+
+      if (
         state.ui.activeView !== "items" &&
         currentImport &&
         product.import_id !== currentImport.id
@@ -109,6 +132,14 @@ export function getVisibleProducts(state) {
             return normalizeText(product.country);
           case "category":
             return normalizeText(product.category);
+          case "supplier":
+            return normalizeText(state.entities.suppliersById[state.entities.importsById[product.import_id]?.supplier_id]?.name);
+          case "validity":
+            return normalizeText(state.entities.importsById[product.import_id]?.meta?.import_date);
+          case "document_type":
+            return normalizeText(state.entities.importsById[product.import_id]?.meta?.document_type);
+          case "article":
+            return normalizeText(product.article);
           case "promo":
             return product.promo ? 1 : 0;
           case "volume_l":
@@ -188,6 +219,8 @@ export function getFilterOptions(state) {
   return {
     countries: [...new Set(base.map((product) => product.country).filter(Boolean))].sort(),
     categories: [...new Set(base.map((product) => product.category).filter(Boolean))].sort(),
+    suppliers: [...new Set(base.map((product) => state.entities.suppliersById[state.entities.importsById[product.import_id]?.supplier_id]?.name).filter(Boolean))].sort(),
+    documentTypes: [...new Set(base.map((product) => state.entities.importsById[product.import_id]?.meta?.document_type).filter(Boolean))].sort(),
     promo: [
       { value: "true", label: "Акция" },
       { value: "false", label: "Обычный" },
