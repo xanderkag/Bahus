@@ -27,6 +27,8 @@ export function getProductsByScope(state) {
   return all;
 }
 
+const searchIndexCache = new WeakMap();
+
 export function getVisibleProducts(state) {
   const filterBase =
     state.ui.activeView === "items" ? getProductsByScope(state) : getCurrentImportProducts(state);
@@ -42,7 +44,9 @@ export function getVisibleProducts(state) {
   const selectedDocumentTypes = new Set(state.ui.filters.document_type || []);
   const validityQuery = normalizeText(state.ui.filters.validity);
   const articleQuery = normalizeText(state.ui.filters.article);
+  
   const productSearchQuery = normalizeText(state.ui.productSearchQuery || "");
+  const searchTokens = productSearchQuery ? productSearchQuery.split(" ").filter(Boolean) : [];
 
   return filterBase
     .filter((product) => {
@@ -50,11 +54,18 @@ export function getVisibleProducts(state) {
         return false;
       }
       
-      const combinedSearchText = normalizeText(
-        `${product.raw_name || ""} ${product.normalized_name || ""} ${product.product_id || ""} ${product.temp_id || ""} ${product.ids?.internal_code || ""} ${product.article || ""}`
-      );
-      if (productSearchQuery && !combinedSearchText.includes(productSearchQuery)) {
-        return false;
+      if (searchTokens.length > 0) {
+        let index = searchIndexCache.get(product);
+        if (!index) {
+          const supplierName = state.entities.suppliersById[state.entities.importsById[product.import_id]?.supplier_id]?.name || "";
+          index = normalizeText(
+            `${product.raw_name || ""} ${product.normalized_name || ""} ${product.product_id || ""} ${product.temp_id || ""} ${product.ids?.internal_code || ""} ${product.article || ""} ${product.category || ""} ${product.country || ""} ${supplierName}`
+          );
+          searchIndexCache.set(product, index);
+        }
+        if (!searchTokens.every((token) => index.includes(token))) {
+          return false;
+        }
       }
 
       if (
