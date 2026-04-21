@@ -1206,14 +1206,23 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             raise ValueError("OPENAI_API_KEY is not configured")
 
         # ── 3. Run analysis and extraction in background thread ────────────────
+        # Max chars per chunk for text-mode extraction.
+        # gpt-4o context window is 128k tokens (~500k chars input),
+        # but output is capped at 16 384 tokens. At ~5 chars/token avg,
+        # a chunk of 40 000 chars should produce ≤8 000 output tokens —
+        # well within the limit, leaving plenty of headroom for a full JSON array.
+        _CHUNK_CHARS = 40_000
+
         def _bg_extract():
             try:
-                # Analyze PDF here so we don't block the HTTP POST response!
-                # Rendering 28+ pages for Vision/heuristic can take minutes and cause 504 timeouts.
                 extract_mode, pdf_payload = self._analyze_pdf(file_bytes, filename)
                 n8n_logger.info(f"[AI] dispatch import={import_id} file={filename} mode={extract_mode}")
 
-                rows = self._chat_completions_extract(api_key, extract_mode, pdf_payload, filename, import_id)
+                if extract_mode == "text" and len(pdf_payload) > _CHUNK_CHARS:
+                    rows = self._chunked_text_extract(api_key, pdf_payload, filename, import_id, _CHUNK_CHARS)
+                else:
+                    rows = self._chat_completions_extract(api_key, extract_mode, pdf_payload, filename, import_id)
+
                 status = "parsed" if rows else "failed"
                 error = None if rows else "No rows extracted"
             except Exception:
@@ -1325,9 +1334,8 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 "messages": messages,
                 "response_format": {"type": "json_object"},
                 "temperature": 0,
-                # Explicitly request maximum output tokens to prevent mid-JSON truncation.
-                # gpt-4o supports up to 16 384 output tokens.
-                "max_tokens": 16000,
+                # Hard maximum for gpt-4o. Do NOT set higher — the API will error.
+                "max_tokens": 16384,
             },
             timeout=300,
         )
@@ -1420,6 +1428,86 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         n8n_logger.info(f"[AI] extracted {len(rows)} rows from {filename}")
         return rows
 
+    # ── Chunked text extraction for large PDFs ────────────────────────────────
+
+    def _chunked_text_extract(
+        self, api_key: str, full_text: str, filename: str, import_id: str, chunk_size: int
+    ) -> list:
+        """Split *full_text* into overlapping chunks and extract rows from each.
+
+        Runs one API call per chunk sequentially (safe on Railway free tier).
+        Deduplicates rows by (name, purchase_price) before returning.
+        """
+        # Split on page breaks when possible so items don't get clipped mid-row.
+        page_sep = "\n\n--- PAGE BREAK ---\n\n"
+        if page_sep in full_text:
+            pages = full_text.split(page_sep)
+        else:
+            # Fall back to splitting by lines
+            lines = full_text.splitlines(keepends=True)
+            pages = []
+            buf, buf_len = [], 0
+            for line in lines:
+                if buf_len + len(line) > chunk_size and buf:
+                    pages.append("".join(buf))
+                    buf, buf_len = [], 0
+                buf.append(line)
+                buf_len += len(line)
+            if buf:
+                pages.append("".join(buf))
+
+        # Group pages into chunks of ~chunk_size chars each
+        chunks, current, current_len = [], [], 0
+        for page in pages:
+            if current_len + len(page) > chunk_size and current:
+                chunks.append(page_sep.join(current))
+                # Overlap: carry last page into next chunk as context
+                current, current_len = [page], len(page)
+            else:
+                current.append(page)
+                current_len += len(page)
+        if current:
+            chunks.append(page_sep.join(current))
+
+        n8n_logger.info(
+            f"[AI] chunked import={import_id} file={filename} "
+            f"total_chars={len(full_text)} chunks={len(chunks)} chunk_size={chunk_size}"
+        )
+
+        all_rows: list = []
+        for idx, chunk in enumerate(chunks):
+            n8n_logger.info(f"[AI] chunk {idx+1}/{len(chunks)} import={import_id} chars={len(chunk)}")
+            try:
+                chunk_rows = self._chat_completions_extract(
+                    api_key, "text", chunk,
+                    f"{filename} [часть {idx+1}/{len(chunks)}]",
+                    import_id,
+                )
+                all_rows.extend(chunk_rows)
+                n8n_logger.info(f"[AI] chunk {idx+1} → {len(chunk_rows)} rows (total so far: {len(all_rows)})")
+            except Exception:
+                n8n_logger.error(
+                    f"[AI] chunk {idx+1} failed import={import_id}\n{traceback.format_exc()}"
+                )
+                # Continue with remaining chunks; partial results are better than nothing
+                continue
+
+        # Deduplicate by (normalised name, price) to remove overlap rows
+        seen: set = set()
+        deduped: list = []
+        for row in all_rows:
+            key = (
+                str(row.get("name") or row.get("raw_name") or "").strip().lower(),
+                str(row.get("purchase_price") or ""),
+            )
+            if key not in seen:
+                seen.add(key)
+                deduped.append(row)
+
+        n8n_logger.info(
+            f"[AI] chunked done import={import_id} raw={len(all_rows)} deduped={len(deduped)}"
+        )
+        return deduped
 
     # ── Persist Extraction Result ─────────────────────────────────────────────
 
