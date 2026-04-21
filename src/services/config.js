@@ -15,9 +15,14 @@ export function getStoredTheme() {
 export function getBootstrapConfig() {
   const requestedSource = queryParam("dataSource") || window.localStorage.getItem("bahus:dataSource") || "auto";
 
+  let defaultApiBase = `${window.location.origin}/api`;
+  if (window.location.hostname !== "127.0.0.1" && window.location.hostname !== "localhost") {
+    defaultApiBase = "https://bahus-production.up.railway.app/api";
+  }
+
   return {
     requestedSource,
-    apiBaseUrl: queryParam("apiBaseUrl") || `${window.location.origin}/api`,
+    apiBaseUrl: queryParam("apiBaseUrl") || defaultApiBase,
   };
 }
 
