@@ -448,7 +448,7 @@ function renderProductsTable(state) {
       const issue = getRowIssueSummary(state, product.id);
 
       return `
-        <tr class="${selectedRows.has(product.id) ? "is-selected" : ""}">
+        <tr class="${selectedRows.has(product.id) ? "is-selected" : ""}" data-dblaction="openRowDetails" data-product-id="${product.id}">
           <td>
             <input
               type="checkbox"
@@ -464,11 +464,6 @@ function renderProductsTable(state) {
               return def ? def.renderTd(product, currentImport, currentImport?.supplier, formatValue, state, issue) : '<td></td>';
             })
             .join("")}
-          <td>
-            <button class="ghost-btn" data-action="openRowDetails" data-product-id="${product.id}">
-              Детали
-            </button>
-          </td>
         </tr>
       `;
     })
@@ -863,6 +858,7 @@ export function renderOverview(state) {
               <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn" data-action="clearSelectedRows" title="Снять текущее выделение" aria-label="Снять выделение">◌</button>
               <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn icon-action-good" data-action="promptMarkSelectedChecked" title="Отметить выделенные строки как проверенные" aria-label="Проверено">✓</button>
               <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn icon-action-bad" data-action="excludeSelectedRows" title="Исключить выделенные строки из дальнейшей обработки" aria-label="Исключить">×</button>
+              <button class="ghost-btn compact-action-btn table-action-btn" data-action="openDetailsForSelectedRow" ${selectedCount !== 1 ? "disabled" : ""} title="Изменить детали (Для одной выбранной строки)">Детали</button>
               <button class="ghost-btn compact-action-btn table-action-btn" data-action="addSelectionToQuote" title="Добавить выделенные строки в состав КП">В КП</button>
               <button class="primary-btn compact-action-btn table-action-btn" data-action="buildQuote" title="Сформировать рабочий сценарий коммерческого предложения по выделенным строкам">Сформировать КП</button>
             </div>

@@ -22,5 +22,14 @@ export function createAppEventHandlers(actions) {
       const value = changeTarget.type === "checkbox" ? changeTarget.checked : changeTarget.value;
       actions[change](changeTarget.dataset, value, event);
     },
+    dblclick(event) {
+      const actionTarget = event.target.closest("[data-dblaction]");
+      if (!actionTarget) return;
+      const { dblaction: action } = actionTarget.dataset;
+      if (!action || typeof actions[action] !== "function") return;
+      // Prevent text selection on double click
+      window.getSelection().removeAllRanges();
+      actions[action](actionTarget.dataset, event);
+    },
   };
 }

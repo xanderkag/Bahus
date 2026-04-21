@@ -611,6 +611,7 @@ export function renderQuote(state) {
               <button class="ghost-btn" data-action="openQuoteSettings">Параметры КП</button>
               <button class="ghost-btn btn-with-icon" data-action="goToReview"><span class="btn-icon-glyph">+</span><span>Добавить позицию</span></button>
               <button class="ghost-btn" data-action="runQuoteAiProcessing" ${canRunAi ? "" : "disabled"}>${aiStatus === "running" ? "Обработка ИИ..." : "Обработка ИИ"}</button>
+              <button class="primary-btn btn-with-icon" data-action="downloadQuoteExcel"><span class="btn-icon-glyph">↓</span><span>Скачать Excel</span></button>
             </div>
           </div>
         </div>

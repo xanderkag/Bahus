@@ -5,6 +5,8 @@ import {
   getQuoteMeta,
   getSelectedProducts,
   getVisibleProducts,
+  enrichQuoteItems,
+  getQuoteSummary,
 } from "../state/selectors.js";
 import { persistSidebarCollapsed, persistTheme } from "../services/config.js";
 import { mapApiProductToEntity } from "../services/review-mappers.js";
@@ -2027,6 +2029,15 @@ export function createActions(store, backend = null) {
         ui: { ...state.ui, selectedRowDetailId: productId, modal: "row-details", rowDetailEditMode: false },
       }));
     },
+    openDetailsForSelectedRow() {
+      const state = store.getState();
+      if (!state.ui.selectedRowIds || state.ui.selectedRowIds.length === 0) return;
+      const productId = state.ui.selectedRowIds[0];
+      update((state) => ({
+        ...state,
+        ui: { ...state.ui, selectedRowDetailId: productId, modal: "row-details", rowDetailEditMode: true },
+      }));
+    },
     promptMarkSelectedChecked() {
       const selected = getSelectedProducts(store.getState());
       if (selected.length === 0) return;
@@ -2778,6 +2789,63 @@ export function createActions(store, backend = null) {
           };
         });
       }
+    },
+
+    downloadQuoteExcel() {
+      const state = store.getState();
+      const meta = state.quote.meta || {};
+      const quoteId = state.ui.selectedQuoteId;
+      if (!quoteId) return;
+
+      const items = (state.runtime?.resources?.quoteDraft?.data?.items || [])
+        .map(i => state.entities.productsById[i.source_product_id] || i);
+
+      // We actually want the enriched items that are shown in the table
+      const enrichedItems = enrichQuoteItems(state);
+      const summary = getQuoteSummary(state);
+      
+      if (!enrichedItems || enrichedItems.length === 0) {
+        alert("В КП нет позиций для скачивания.");
+        return;
+      }
+
+      const rows = enrichedItems.map((item, idx) => ({
+        "№": idx + 1,
+        "Позиция": item.name || "",
+        "Объём (л)": item.volume_l || "",
+        "Кол-во": item.qty || 0,
+        "Цена (руб)": item.sale_price || 0,
+        "Сумма (руб)": item.lineSum || 0,
+      }));
+
+      rows.push({}); // Empty row
+      rows.push({
+        "№": "",
+        "Позиция": "ИТОГО",
+        "Объём (л)": "",
+        "Кол-во": summary.qty,
+        "Цена (руб)": "",
+        "Сумма (руб)": summary.sale,
+      });
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+
+      // Add column widths
+      ws["!cols"] = [
+        { wch: 5 },  // №
+        { wch: 50 }, // Позиция
+        { wch: 10 }, // Объём
+        { wch: 10 }, // Кол-во
+        { wch: 15 }, // Цена
+        { wch: 15 }, // Сумма
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Коммерческое предложение");
+
+      const safeDate = (meta.quoteDate || new Date().toISOString().split("T")[0]);
+      const safeNumber = (meta.quoteNumber || "Новое").replace(/[^a-zA-Z0-9А-Яа-я-]/g, "_");
+      XLSX.writeFile(wb, `${safeNumber}_${safeDate}.xlsx`);
     },
 
   };

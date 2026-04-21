@@ -253,6 +253,7 @@ export function renderItems(state) {
               <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn" data-action="clearSelectedRows" title="Снять текущее выделение" aria-label="Снять выделение">◌</button>
               <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn icon-action-good" data-action="promptMarkSelectedChecked" title="Отметить выделенные строки как проверенные" aria-label="Проверено">✓</button>
               <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn icon-action-bad" data-action="excludeSelectedRows" title="Исключить выделенные строки" aria-label="Исключить">×</button>
+              <button class="ghost-btn compact-action-btn table-action-btn" data-action="openDetailsForSelectedRow" ${selectedRows.size !== 1 ? "disabled" : ""} title="Изменить детали (Для одной выбранной строки)">Детали</button>
               <button class="ghost-btn compact-action-btn table-action-btn" data-action="addSelectionToQuote" title="Добавить выделенные строки в КП">В КП</button>
             </div>
             <div class="search-input-wrap" style="max-width: 320px; margin-left: auto;">
@@ -281,7 +282,7 @@ export function renderItems(state) {
                   const issue = getRowIssueSummary(state, product.id);
 
                   return `
-                    <tr class="${selectedRows.has(product.id) ? "is-selected" : ""}">
+                    <tr class="${selectedRows.has(product.id) ? "is-selected" : ""}" data-dblaction="openRowDetails" data-product-id="${product.id}">
                       <td>
                         <input
                           type="checkbox"
@@ -297,11 +298,6 @@ export function renderItems(state) {
                           return def ? def.renderTd(product, importRecord, supplier, formatValue, state, issue) : '<td></td>';
                         })
                         .join("")}
-                      <td>
-                        <button class="ghost-btn table-row-btn" data-action="openRowDetails" data-product-id="${product.id}">
-                          Детали
-                        </button>
-                      </td>
                     </tr>
                   `;
                 })

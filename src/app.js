@@ -324,6 +324,7 @@ async function main() {
   });
   root.addEventListener("input", handlers.input);
   root.addEventListener("change", handlers.change);
+  root.addEventListener("dblclick", handlers.dblclick);
   attachQuoteColumnResize(root, store, actions);
 
   store.subscribe((state) => {
