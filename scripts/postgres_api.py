@@ -1325,6 +1325,9 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 "messages": messages,
                 "response_format": {"type": "json_object"},
                 "temperature": 0,
+                # Explicitly request maximum output tokens to prevent mid-JSON truncation.
+                # gpt-4o supports up to 16 384 output tokens.
+                "max_tokens": 16000,
             },
             timeout=300,
         )
@@ -1332,8 +1335,20 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         if not resp.ok:
             raise ValueError(f"OpenAI error {resp.status_code}: {resp.text[:300]}")
 
-        raw = resp.json()["choices"][0]["message"]["content"]
-        n8n_logger.info(f"[AI] response import={import_id} len={len(raw)} preview={raw[:150]}")
+        choice = resp.json()["choices"][0]
+        finish_reason = choice.get("finish_reason", "unknown")
+        raw = choice["message"]["content"]
+        n8n_logger.info(
+            f"[AI] response import={import_id} finish_reason={finish_reason} "
+            f"len={len(raw)} preview={raw[:150]}"
+        )
+
+        # Warn immediately if the model ran out of tokens — the JSON is almost certainly truncated.
+        if finish_reason == "length":
+            n8n_logger.warning(
+                f"[AI] TRUNCATED RESPONSE import={import_id} — finish_reason=length. "
+                f"Attempting JSON repair on {len(raw)} chars."
+            )
 
         # Sanitize response (strip markdown fences and citation markers if any)
         cleaned = re.sub(r'【[^】]*】', '', raw).strip()
@@ -1343,10 +1358,68 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         if not cleaned or cleaned[0] not in ('{', '['):
             raise ValueError(f"Response is not valid JSON: {raw[:300]}")
 
-        parsed = json.loads(cleaned)
+        # ── JSON repair: close any unclosed arrays/objects from a truncated response ──
+        def repair_truncated_json(s: str) -> str:
+            """Close unclosed brackets/braces so the last complete object is kept."""
+            # Track nesting depth
+            depth_stack = []
+            in_string = False
+            escape_next = False
+            last_complete_obj_end = 0
+            depth_at_root_close = 0
+
+            for i, ch in enumerate(s):
+                if escape_next:
+                    escape_next = False
+                    continue
+                if ch == '\\' and in_string:
+                    escape_next = True
+                    continue
+                if ch == '"':
+                    in_string = not in_string
+                    continue
+                if in_string:
+                    continue
+                if ch in ('{', '['):
+                    depth_stack.append(ch)
+                elif ch in ('}', ']'):
+                    if depth_stack:
+                        depth_stack.pop()
+                    # Record the position after each top-level object closes
+                    if not depth_stack:
+                        last_complete_obj_end = i + 1
+
+            if not depth_stack:
+                return s  # Already valid
+
+            # Build closing sequence
+            closers = {'[': ']', '{': '}'}
+            suffix = ''.join(closers[c] for c in reversed(depth_stack))
+            repaired = s + suffix
+            n8n_logger.info(
+                f"[AI] json_repair appended {len(suffix)!r} chars: {suffix!r}"
+            )
+            return repaired
+
+        try:
+            parsed = json.loads(cleaned)
+        except json.JSONDecodeError as e:
+            n8n_logger.warning(f"[AI] json parse failed ({e}), attempting repair")
+            try:
+                repaired = repair_truncated_json(cleaned)
+                parsed = json.loads(repaired)
+                n8n_logger.info(f"[AI] json_repair succeeded for import={import_id}")
+            except json.JSONDecodeError as e2:
+                raise ValueError(
+                    f"JSON невалиден даже после попытки восстановления: {e2}. "
+                    f"Вероятно, GPT обрезал ответ (finish_reason={finish_reason}). "
+                    f"Попробуйте разбить прайс-лист на меньшие части."
+                ) from e2
+
         rows = parsed if isinstance(parsed, list) else (parsed.get("rows") or [])
         n8n_logger.info(f"[AI] extracted {len(rows)} rows from {filename}")
         return rows
+
 
     # ── Persist Extraction Result ─────────────────────────────────────────────
 

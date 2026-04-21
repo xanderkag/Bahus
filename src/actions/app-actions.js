@@ -2743,5 +2743,42 @@ export function createActions(store, backend = null) {
       });
     },
 
+    async retryImportDispatch(dataset) {
+      const importId = dataset.id;
+      if (!importId || !backend) return;
+      update((state) => {
+        const current = state.entities.importsById[importId];
+        if (!current) return state;
+        return {
+          ...state,
+          entities: {
+            ...state.entities,
+            importsById: {
+              ...state.entities.importsById,
+              [importId]: { ...current, status: "processing", meta: { ...current.meta, last_error: null } },
+            },
+          },
+        };
+      });
+      try {
+        await backend.dispatchImport(importId, { force: true });
+      } catch (err) {
+        update((state) => {
+          const current = state.entities.importsById[importId];
+          if (!current) return state;
+          return {
+            ...state,
+            entities: {
+              ...state.entities,
+              importsById: {
+                ...state.entities.importsById,
+                [importId]: { ...current, status: "failed", meta: { ...current.meta, last_error: err.message } },
+              },
+            },
+          };
+        });
+      }
+    },
+
   };
 }

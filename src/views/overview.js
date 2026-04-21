@@ -827,6 +827,17 @@ export function renderOverview(state) {
                 </div>
               </div>
             `
+            : currentImport && currentImport.status === "failed"
+            ? `
+              <div class="import-error-banner">
+                <div class="import-error-banner-icon">⚠</div>
+                <div class="import-error-banner-copy">
+                  <strong>Обработка завершилась с ошибкой</strong>
+                  <span>${escapeHtml(currentImport.meta?.last_error || "Неизвестная ошибка. Попробуйте загрузить файл повторно.")}</span>
+                </div>
+                <button class="ghost-btn compact-action-btn" data-action="retryImportDispatch" data-id="${escapeHtml(currentImport.id)}" style="flex-shrink:0;white-space:nowrap;">Повторить</button>
+              </div>
+            `
             : ""
         }
         <div class="panel-header overview-panel-header">

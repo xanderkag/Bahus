@@ -2923,6 +2923,48 @@ tbody tr.is-selected {
 }
 
 /* =========================================================================
+   Error banner — shown above products panel when AI processing fails
+   ========================================================================= */
+
+.import-error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(243, 123, 151, 0.3);
+  background: rgba(243, 123, 151, 0.08);
+}
+
+.import-error-banner-icon {
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--bad);
+}
+
+.import-error-banner-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.import-error-banner-copy strong {
+  font-size: var(--text-sm);
+  color: var(--bad);
+  font-weight: 600;
+}
+
+.import-error-banner-copy span {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+/* =========================================================================
    Empty state while import is being processed
    ========================================================================= */
 
