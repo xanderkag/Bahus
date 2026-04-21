@@ -2045,7 +2045,7 @@ export function createActions(store, backend = null) {
         return { 
           ...state, 
           entities: { ...state.entities, productsById: nextProducts },
-          ui: { ...state.ui, modal: null }
+          ui: { ...state.ui, modal: null, selectedRowIds: [] }
         };
       });
       if (backend && selected.length) {

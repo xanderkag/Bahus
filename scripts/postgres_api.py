@@ -272,6 +272,8 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             return self.handle_create_import()
         if route.startswith("/api/imports/") and route.endswith("/dispatch"):
             return self.handle_dispatch_import(route.split("/")[3])
+        if route == "/api/review/rows":
+            return self.handle_review_rows()
         if route.startswith("/api/rows/") and route.endswith("/enrich-photo"):
             return self.handle_enrich_photo(route.split("/")[3])
         if route == "/api/debug/test":
@@ -902,6 +904,26 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             }
         return self.respond_json({"item": status})
 
+    def handle_review_rows(self) -> None:
+        payload = self.read_json()
+        updates = payload.get("updates", [])
+        if not updates:
+            return self.respond_json({"status": "ok", "updated": 0})
+        
+        with self.db() as conn:
+            for u in updates:
+                conn.execute(
+                    """
+                    UPDATE import_row 
+                    SET review_status = %s, excluded = %s
+                    WHERE import_batch_id = %s AND row_index = %s
+                    """,
+                    (u.get("review_status"), u.get("excluded", False), u.get("import_id"), u.get("row_index"))
+                )
+            conn.commit()
+            
+        logger.info(f"[API] Updated review_status for {len(updates)} rows")
+        return self.respond_json({"status": "ok", "updated": len(updates)})
 
     def handle_create_import(self) -> None:
         content_type = self.headers.get("Content-Type", "")
