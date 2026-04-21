@@ -234,7 +234,7 @@ function renderQuoteListColumnMenu(state, column) {
     quoteNumber: `
       ${renderQuoteListSortControls(column, state.ui.quoteListSort)}
       <div class="column-menu-search">
-        <input class="input input-compact" placeholder="Поиск по номеру, теме, клиенту" value="${escapeHtml(state.ui.quoteListFilters.query || "")}" data-input="setQuoteListTextFilter" data-field="query" />
+        <input class="input input-compact" placeholder="Поиск (клиент, статус...)" value="${escapeHtml(state.ui.quoteListFilters.query || "")}" data-input="setQuoteListTextFilter" data-field="query" />
       </div>
       <div class="column-menu-footer">
         <button class="ghost-btn compact-action-btn" data-action="clearQuoteListColumnFilter" data-field="query">Сбросить</button>

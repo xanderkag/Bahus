@@ -49,8 +49,11 @@ function renderMetaRows(currentImport, supplier, compact = true) {
     .join("");
 }
 
+const importSearchIndexCache = new WeakMap();
+
 function getVisibleImports(state) {
-  const fileQuery = String(state.ui.importFilters?.file || "").toLowerCase().trim();
+  const fileQuery = String(state.ui.importFilters?.file || "").trim();
+  const searchTokens = fileQuery ? normalizeText(fileQuery).split(" ").filter(Boolean) : [];
   const selectedSuppliers = new Set(state.ui.importFilters?.supplier || []);
   const selectedFormats = new Set(state.ui.importFilters?.format || []);
   const selectedTypes = new Set(state.ui.importFilters?.type || []);
@@ -60,7 +63,20 @@ function getVisibleImports(state) {
     .map((importId) => state.entities.importsById[importId])
     .filter((item) => {
       const supplier = state.entities.suppliersById[item.supplier_id];
-      if (fileQuery && !String(item.meta.source_file || "").toLowerCase().includes(fileQuery)) return false;
+      
+      if (searchTokens.length > 0) {
+        let index = importSearchIndexCache.get(item);
+        if (!index) {
+          index = normalizeText(
+            `${item.meta.source_file || ""} ${supplier?.name || ""} ${item.meta.source_format || ""} ${formatDocumentType(item.meta.document_type) || ""} ${formatImportStatus(item.status) || ""}`
+          );
+          importSearchIndexCache.set(item, index);
+        }
+        if (!searchTokens.every((token) => index.includes(token))) {
+          return false;
+        }
+      }
+
       if (selectedSuppliers.size && !selectedSuppliers.has(supplier?.name)) return false;
       if (selectedFormats.size && !selectedFormats.has(item.meta.source_format?.toUpperCase())) return false;
       if (selectedTypes.size && !selectedTypes.has(formatDocumentType(item.meta.document_type))) return false;
@@ -176,7 +192,7 @@ function renderImportColumnMenu(state, column) {
     file: `
       ${renderImportSortControls(column, state.ui.importSort)}
       <div class="column-menu-search">
-        <input class="input input-compact" placeholder="Поиск по файлу" value="${escapeHtml(state.ui.importFilters.file || "")}" data-input="setImportTextFilter" data-field="file" />
+        <input class="input input-compact" placeholder="Поиск (файл, поставщик...)" value="${escapeHtml(state.ui.importFilters.file || "")}" data-input="setImportTextFilter" data-field="file" />
       </div>
       <div class="column-menu-footer">
         <button class="ghost-btn compact-action-btn" data-action="clearImportColumnFilter" data-field="file">Сбросить</button>

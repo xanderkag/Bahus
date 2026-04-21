@@ -375,8 +375,11 @@ export function getQuoteListOptions(state) {
   };
 }
 
+const quoteSearchIndexCache = new WeakMap();
+
 export function getVisibleQuotes(state) {
   const query = normalizeText(state.ui.quoteListFilters?.query || "");
+  const searchTokens = query ? query.split(" ").filter(Boolean) : [];
   const selectedClients = new Set(state.ui.quoteListFilters?.client || []);
   const selectedManagers = new Set(state.ui.quoteListFilters?.manager || []);
   const selectedStatuses = new Set(state.ui.quoteListFilters?.status || []);
@@ -385,10 +388,19 @@ export function getVisibleQuotes(state) {
     .map((id) => state.entities.quotesById?.[id])
     .filter(Boolean)
     .filter((quote) => {
-      const haystack = normalizeText(
-        `${quote.meta?.quoteNumber || ""} ${quote.meta?.requestTitle || ""} ${quote.meta?.clientName || ""}`,
-      );
-      if (query && !haystack.includes(query)) return false;
+      if (searchTokens.length > 0) {
+        let index = quoteSearchIndexCache.get(quote);
+        if (!index) {
+          index = normalizeText(
+            `${quote.meta?.quoteNumber || ""} ${quote.meta?.requestTitle || ""} ${quote.meta?.clientName || ""} ${quote.meta?.managerName || ""} ${quote.status || ""}`
+          );
+          quoteSearchIndexCache.set(quote, index);
+        }
+        if (!searchTokens.every((token) => index.includes(token))) {
+          return false;
+        }
+      }
+      
       if (selectedClients.size && !selectedClients.has(quote.meta?.clientName || "")) return false;
       if (selectedManagers.size && !selectedManagers.has(quote.meta?.managerName || "")) return false;
       if (selectedStatuses.size && !selectedStatuses.has(quote.status || "draft")) return false;
