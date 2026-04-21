@@ -2463,7 +2463,400 @@ tbody tr.is-selected {
   }
 }
 
-/* Boot loader for app.js initialization */
+/* =========================================================================
+   Boot screen — wine-delivery themed animated loading screen
+   ========================================================================= */
+
+.boot-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 20% 30%, rgba(155, 35, 53, 0.18), transparent 40%),
+    radial-gradient(ellipse at 80% 70%, rgba(74, 127, 193, 0.20), transparent 40%),
+    linear-gradient(160deg, #040915 0%, #07111f 50%, #050c18 100%);
+}
+
+/* Floating background particles (wine-color sparkles) */
+.boot-particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.boot-particle {
+  position: absolute;
+  bottom: -10px;
+  left: var(--x);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  opacity: 0;
+  animation: boot-float-up 6s ease-in-out infinite;
+  animation-delay: var(--delay);
+}
+.boot-particle-0 { background: rgba(155, 35, 53, 0.7); width: 5px; height: 5px; }
+.boot-particle-1 { background: rgba(113, 184, 255, 0.6); width: 4px; height: 4px; }
+.boot-particle-2 { background: rgba(200, 169, 110, 0.65); width: 6px; height: 6px; }
+.boot-particle-3 { background: rgba(155, 35, 53, 0.5); width: 3px; height: 3px; }
+.boot-particle-4 { background: rgba(49, 215, 175, 0.5); width: 5px; height: 5px; }
+.boot-particle-5 { background: rgba(113, 184, 255, 0.45); width: 4px; height: 4px; }
+
+@keyframes boot-float-up {
+  0%   { transform: translateY(0) scale(0.5); opacity: 0; }
+  15%  { opacity: 1; }
+  85%  { opacity: 0.6; }
+  100% { transform: translateY(-100vh) scale(1.2) rotate(180deg); opacity: 0; }
+}
+
+/* Center content column */
+.boot-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 40px;
+  width: 100%;
+  max-width: 560px;
+  padding: 24px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Logo block */
+.boot-logo-block {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  animation: boot-fade-in 0.7s ease both;
+}
+
+.boot-logo-icon {
+  background: linear-gradient(135deg, rgba(74, 127, 193, 0.25), rgba(155, 35, 53, 0.2));
+  border: 1px solid rgba(113, 184, 255, 0.2);
+  border-radius: 18px;
+  padding: 12px;
+  box-shadow: 0 8px 32px rgba(155, 35, 53, 0.2), 0 2px 8px rgba(0,0,0,0.4);
+  animation: boot-logo-glow 3s ease-in-out infinite;
+}
+
+@keyframes boot-logo-glow {
+  0%, 100% { box-shadow: 0 8px 32px rgba(155, 35, 53, 0.2), 0 2px 8px rgba(0,0,0,0.4); }
+  50%       { box-shadow: 0 8px 40px rgba(155, 35, 53, 0.45), 0 2px 12px rgba(0,0,0,0.5); }
+}
+
+.boot-brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.boot-brand-name {
+  font-size: 42px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  background: linear-gradient(135deg, #ebf1ff 0%, #aec4ef 60%, #9b2335 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.boot-brand-sub {
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(146, 164, 202, 0.7);
+  margin-top: 2px;
+}
+
+/* Wine convoy / delivery scene */
+.boot-convoy {
+  width: 100%;
+  height: 90px;
+  position: relative;
+  overflow: hidden;
+  animation: boot-fade-in 0.9s ease 0.2s both;
+}
+
+.boot-road {
+  position: absolute;
+  bottom: 10px;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(86, 113, 166, 0.3);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.boot-road-line {
+  position: absolute;
+  top: 50%;
+  left: -100%;
+  right: 0;
+  height: 1px;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(113, 184, 255, 0.5) 0px,
+    rgba(113, 184, 255, 0.5) 20px,
+    transparent 20px,
+    transparent 40px
+  );
+  animation: boot-road-scroll 1.2s linear infinite;
+}
+
+@keyframes boot-road-scroll {
+  to { transform: translateX(40px); }
+}
+
+/* Truck */
+.boot-truck {
+  position: absolute;
+  bottom: 14px;
+  left: -100px;
+  animation: boot-truck-drive 5s linear infinite;
+}
+
+@keyframes boot-truck-drive {
+  0%   { left: -120px; }
+  80%  { left: 55%; opacity: 1; }
+  100% { left: 55%; opacity: 0; }
+}
+
+.boot-truck-body {
+  display: flex;
+  align-items: flex-end;
+}
+
+.boot-truck-cab {
+  width: 30px;
+  height: 30px;
+  background: linear-gradient(135deg, #2d5a8e, #1a3a5c);
+  border-radius: 6px 6px 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 2;
+}
+
+.boot-truck-window {
+  width: 16px;
+  height: 10px;
+  background: rgba(113, 184, 255, 0.5);
+  border-radius: 3px;
+  margin-top: -4px;
+  box-shadow: 0 0 6px rgba(113, 184, 255, 0.4);
+}
+
+.boot-truck-cargo {
+  width: 52px;
+  height: 26px;
+  background: linear-gradient(135deg, #9b2335, #6b0f1a);
+  border-radius: 4px 4px 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 2px;
+}
+
+.boot-cargo-label {
+  font-size: 14px;
+  filter: drop-shadow(0 0 4px rgba(255,100,80,0.5));
+}
+
+.boot-truck-wheels {
+  display: flex;
+  gap: 32px;
+  position: absolute;
+  bottom: -8px;
+  left: 6px;
+}
+
+.boot-wheel {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #1a2a3e;
+  border: 3px solid #4a6fa5;
+  animation: boot-spin 0.4s linear infinite;
+}
+
+/* Floating wine icons that fly from the truck toward the destination */
+.boot-bottle-float {
+  position: absolute;
+  font-size: 20px;
+  bottom: 20px;
+  opacity: 0;
+  filter: drop-shadow(0 2px 8px rgba(155, 35, 53, 0.6));
+}
+
+.boot-bottle-float-1 {
+  left: 0%;
+  animation: boot-bottle-fly 5s ease-in-out 1.5s infinite;
+}
+.boot-bottle-float-2 {
+  left: 5%;
+  animation: boot-bottle-fly 5s ease-in-out 2.2s infinite;
+  font-size: 16px;
+}
+.boot-bottle-float-3 {
+  left: -5%;
+  animation: boot-bottle-fly 5s ease-in-out 2.9s infinite;
+  font-size: 18px;
+}
+
+@keyframes boot-bottle-fly {
+  0%   { transform: translate(0, 0) rotate(0deg) scale(0.5); opacity: 0; }
+  10%  { opacity: 1; }
+  60%  { transform: translate(320px, -30px) rotate(15deg) scale(1.1); opacity: 0.9; }
+  80%  { transform: translate(440px, 0px) rotate(5deg) scale(0.9); opacity: 0.5; }
+  100% { transform: translate(500px, 10px) rotate(0deg) scale(0.7); opacity: 0; }
+}
+
+/* Destination store */
+.boot-destination {
+  position: absolute;
+  right: 0;
+  bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  animation: boot-dest-pulse 2s ease-in-out infinite;
+}
+
+.boot-dest-icon {
+  font-size: 26px;
+  filter: drop-shadow(0 2px 8px rgba(113, 184, 255, 0.4));
+}
+
+.boot-dest-boxes {
+  display: flex;
+  gap: 2px;
+}
+
+.boot-box {
+  font-size: 13px;
+  opacity: 0;
+}
+
+.boot-box-1 { animation: boot-box-appear 5s ease-in-out 3.5s infinite; }
+.boot-box-2 { animation: boot-box-appear 5s ease-in-out 4.0s infinite; }
+
+@keyframes boot-box-appear {
+  0%, 55%  { opacity: 0; transform: translateY(6px) scale(0.7); }
+  65%, 90% { opacity: 1; transform: translateY(0) scale(1); }
+  100%     { opacity: 0; }
+}
+
+@keyframes boot-dest-pulse {
+  0%, 100% { filter: drop-shadow(0 0 0 transparent); }
+  50%       { filter: drop-shadow(0 0 12px rgba(113, 184, 255, 0.3)); }
+}
+
+/* Status card */
+.boot-status-card {
+  width: 100%;
+  padding: 28px 32px;
+  border: 1px solid rgba(86, 113, 166, 0.28);
+  border-radius: 24px;
+  background: rgba(12, 21, 42, 0.72);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 24px 60px rgba(2, 8, 23, 0.5), inset 0 1px 0 rgba(255,255,255,0.06);
+  animation: boot-fade-in 0.9s ease 0.35s both;
+}
+
+.boot-status-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+
+.boot-status-title {
+  font-size: 20px;
+  font-weight: 650;
+  color: var(--text);
+  letter-spacing: -0.015em;
+}
+
+.boot-status-msg {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+/* Pulsing dot loader */
+.boot-pulse-ring {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid rgba(155, 35, 53, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: boot-ring-pulse 1.5s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.boot-pulse-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #9b2335;
+  animation: boot-dot-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes boot-ring-pulse {
+  0%, 100% { border-color: rgba(155, 35, 53, 0.3); transform: scale(1); }
+  50%       { border-color: rgba(155, 35, 53, 0.7); transform: scale(1.1); }
+}
+
+@keyframes boot-dot-pulse {
+  0%, 100% { transform: scale(1); background: #9b2335; box-shadow: 0 0 0 0 rgba(155, 35, 53, 0.5); }
+  50%       { transform: scale(1.2); background: #c23043; box-shadow: 0 0 0 6px rgba(155, 35, 53, 0); }
+}
+
+/* Indeterminate progress bar */
+.boot-progress-track {
+  margin-top: 18px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(86, 113, 166, 0.2);
+  overflow: hidden;
+}
+
+.boot-progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #9b2335, #71b8ff, #9b2335);
+  background-size: 200% 100%;
+  animation: boot-progress-shimmer 2s linear infinite;
+  width: 60%;
+}
+
+@keyframes boot-progress-shimmer {
+  0%   { background-position: 200% 0; margin-left: -60%; }
+  100% { background-position: -200% 0; margin-left: 100%; }
+}
+
+/* Shared fade-in */
+@keyframes boot-fade-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Shared wheel spin (reused by .boot-wheel) */
+@keyframes boot-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Legacy .boot-loader kept for error fallback */
 .boot-loader {
   width: 20px;
   height: 20px;
@@ -2473,11 +2866,6 @@ tbody tr.is-selected {
   animation: boot-spin 0.8s linear infinite;
 }
 
-@keyframes boot-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
 
 /* =========================================================================
    Processing status: animated spinner in status pill

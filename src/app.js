@@ -44,17 +44,90 @@ function attachQuoteColumnResize(rootElement, store, actions) {
 
 function renderBootMessage(title, message, isLoading = false) {
   root.innerHTML = `
-    <div style="min-height:100vh;display:grid;place-items:center;padding:24px;">
-      <div style="max-width:480px;width:100%;text-align:center;display:flex;flex-direction:column;align-items:center;gap:32px;">
-        <h1 style="margin:0;font-size:32px;background:linear-gradient(135deg, var(--text) 0%, var(--muted) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:-0.02em;font-weight:600;">
-          Bakhus Assistant
-        </h1>
-        <div style="padding:32px;border:1px solid var(--line);border-radius:var(--radius-xl);background:var(--panel-strong);box-shadow:var(--shadow);width:100%;">
-          <div style="font-size:var(--text-lg);font-weight:600;color:var(--text);margin-bottom:12px;display:flex;align-items:center;justify-content:center;gap:12px;">
-            ${isLoading ? '<div class="boot-loader"></div>' : ''}
-            ${title}
+    <div class="boot-screen">
+      <div class="boot-particles">
+        ${Array.from({ length: 18 }, (_, i) => `<div class="boot-particle boot-particle-${i % 6}" style="--delay:${(i * 0.37).toFixed(2)}s;--x:${(i * 5.5 + 3).toFixed(0)}%"></div>`).join('')}
+      </div>
+
+      <div class="boot-center">
+        <!-- Logo & Branding -->
+        <div class="boot-logo-block">
+          <div class="boot-logo-icon">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+              <!-- Wine bottle body -->
+              <rect x="18" y="18" width="12" height="22" rx="3" fill="url(#boot-bottle-grad)"/>
+              <!-- Bottle neck -->
+              <rect x="20" y="10" width="8" height="10" rx="2" fill="url(#boot-bottle-grad)"/>
+              <!-- Cork -->
+              <rect x="21" y="7" width="6" height="4" rx="1.5" fill="#c8a96e"/>
+              <!-- Wine level -->
+              <rect x="18" y="26" width="12" height="14" rx="3" fill="url(#boot-wine-grad)" opacity="0.8"/>
+              <!-- Label -->
+              <rect x="19" y="21" width="10" height="8" rx="1" fill="rgba(255,255,255,0.15)"/>
+              <defs>
+                <linearGradient id="boot-bottle-grad" x1="18" y1="7" x2="30" y2="40" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stop-color="#4a7fc1"/>
+                  <stop offset="100%" stop-color="#1e3d6e"/>
+                </linearGradient>
+                <linearGradient id="boot-wine-grad" x1="18" y1="26" x2="30" y2="40" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stop-color="#9b2335"/>
+                  <stop offset="100%" stop-color="#6b0f1a"/>
+                </linearGradient>
+              </defs>
+            </svg>
           </div>
-          <div style="color:var(--muted);font-size:var(--text-sm);line-height:1.5;">${message}</div>
+          <div class="boot-brand-text">
+            <span class="boot-brand-name">Bahus</span>
+            <span class="boot-brand-sub">Assistant</span>
+          </div>
+        </div>
+
+        <!-- Wine convoy animation -->
+        <div class="boot-convoy">
+          <div class="boot-road">
+            <div class="boot-road-line"></div>
+          </div>
+          <!-- Truck -->
+          <div class="boot-truck">
+            <div class="boot-truck-body">
+              <div class="boot-truck-cab">
+                <div class="boot-truck-window"></div>
+              </div>
+              <div class="boot-truck-cargo">
+                <div class="boot-cargo-label">🍷</div>
+              </div>
+            </div>
+            <div class="boot-truck-wheels">
+              <div class="boot-wheel"></div>
+              <div class="boot-wheel"></div>
+            </div>
+          </div>
+          <!-- Floating bottles -->
+          <div class="boot-bottle-float boot-bottle-float-1">🍾</div>
+          <div class="boot-bottle-float boot-bottle-float-2">🍷</div>
+          <div class="boot-bottle-float boot-bottle-float-3">🍾</div>
+          <!-- Destination box -->
+          <div class="boot-destination">
+            <div class="boot-dest-icon">🏬</div>
+            <div class="boot-dest-boxes">
+              <div class="boot-box boot-box-1">📦</div>
+              <div class="boot-box boot-box-2">📦</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Status card -->
+        <div class="boot-status-card">
+          <div class="boot-status-header">
+            ${isLoading ? '<div class="boot-pulse-ring"><div class="boot-pulse-dot"></div></div>' : '<span style="font-size:20px">✓</span>'}
+            <span class="boot-status-title">${title}</span>
+          </div>
+          <p class="boot-status-msg">${message}</p>
+          ${isLoading ? `
+            <div class="boot-progress-track">
+              <div class="boot-progress-fill"></div>
+            </div>
+          ` : ''}
         </div>
       </div>
     </div>
