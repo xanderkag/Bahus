@@ -624,6 +624,20 @@ export function renderLayout(state) {
       ${renderConfirmDeleteImportModal(state)}
       ${renderTableSettingsModal(state)}
       ${renderConfirmMarkCheckedModal(state)}
+      ${renderMarkCheckedSuccessModal(state)}
+    </div>
+  `;
+}
+
+function renderMarkCheckedSuccessModal(state) {
+  if (state.ui.modal !== "markCheckedSuccess") return "";
+  return `
+    <div class="modal-overlay">
+      <div class="app-dialog compact-dialog" style="text-align: center; padding: 32px;">
+        <div style="font-size: 48px; margin-bottom: 16px; color: var(--status-good);">✓</div>
+        <h3 style="margin-bottom: 8px;">Успешно!</h3>
+        <p style="color: var(--text-secondary);">Выбранные строки перенесены в общую базу.</p>
+      </div>
     </div>
   `;
 }

@@ -650,7 +650,7 @@ function renderRowDetailModal(state) {
                     </div>
                   </div>
                 `
-                : '<div class="empty-block row-detail-empty">Сопоставление с каталогом пока не выполнено.</div>'
+                : ""
             }
           </section>
         </div>

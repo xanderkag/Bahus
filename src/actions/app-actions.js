@@ -2056,9 +2056,17 @@ export function createActions(store, backend = null) {
         return { 
           ...state, 
           entities: { ...state.entities, productsById: nextProducts },
-          ui: { ...state.ui, modal: null, selectedRowIds: [] }
+          ui: { ...state.ui, modal: "markCheckedSuccess", selectedRowIds: [] }
         };
       });
+
+      setTimeout(() => {
+        const state = store.getState();
+        if (state.ui.modal === "markCheckedSuccess") {
+          update(s => ({ ...s, ui: { ...s.ui, modal: null } }));
+        }
+      }, 1500);
+
       if (backend && selected.length) {
         try {
           await backend.updateReviewRows({
