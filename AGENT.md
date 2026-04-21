@@ -188,6 +188,7 @@ Structured logs in Railway Deploy Logs. Search for:
 
 ## 🧹 Technical Rules
 
+- **AVOID JAVASCRIPT DUPLICATION (Black Screen Rule):** In a bundler-free Vanilla JS project, duplicate function declarations cause fatal `SyntaxError`s and crash the entire frontend rendering (resulting in a blank screen). When refactoring UI code, ALWAYS search for and fully delete the obsolete implementation of the function.
 - **Version string:** Always visible in frontend header (`src/views/layout.js`). Must include git hash + build date. CI populates via `src/version.js`.
 - **Commit format:** `type(scope): description` (conventional commits)
 - **n8n workflows:** Store ONLY in `n8n/` directory. Never on Desktop or root. Current: `bahus_workflow_v2.json`.
