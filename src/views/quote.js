@@ -228,7 +228,7 @@ function renderQuoteListChoiceList(field, values, selectedValues) {
 }
 
 function renderQuoteListColumnMenu(state, column) {
-  if (state.ui.activeQuoteListColumnFilter !== column) return "";
+  if (!column || state.ui.activeQuoteListColumnFilter !== column) return "";
   const options = getQuoteListOptions(state);
   const contentByColumn = {
     quoteNumber: `
