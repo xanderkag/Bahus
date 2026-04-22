@@ -817,8 +817,8 @@
   white-space: nowrap;
 }
 
-/* Lucide icon buttons */
-.icon-btn {
+/* Lucide toolbar buttons */
+.toolbar-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -836,62 +836,62 @@
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
-.icon-btn:hover {
+.toolbar-btn:hover {
   background: rgba(255, 255, 255, 0.08);
   color: var(--fg);
   border-color: var(--muted);
 }
 
-.icon-btn:active {
+.toolbar-btn:active {
   transform: scale(0.96);
 }
 
-.icon-btn:disabled {
+.toolbar-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
   pointer-events: none;
 }
 
-.icon-btn svg {
+.toolbar-btn svg {
   flex-shrink: 0;
 }
 
-.icon-btn span {
+.toolbar-btn span {
   white-space: nowrap;
 }
 
-.icon-btn-danger {
+.toolbar-btn-danger {
   color: var(--red, #ef4444);
   border-color: rgba(239, 68, 68, 0.2);
 }
 
-.icon-btn-danger:hover {
+.toolbar-btn-danger:hover {
   background: rgba(239, 68, 68, 0.1);
   color: #f87171;
   border-color: rgba(239, 68, 68, 0.4);
 }
 
-.icon-btn-primary {
+.toolbar-btn-primary {
   background: rgba(79, 140, 255, 0.12);
   color: #60a5fa;
   border-color: rgba(79, 140, 255, 0.25);
   padding: 0 12px;
 }
 
-.icon-btn-primary:hover {
+.toolbar-btn-primary:hover {
   background: rgba(79, 140, 255, 0.22);
   color: #93c5fd;
   border-color: rgba(79, 140, 255, 0.45);
 }
 
-.icon-btn-accent {
+.toolbar-btn-accent {
   background: rgba(139, 92, 246, 0.12);
   color: #a78bfa;
   border-color: rgba(139, 92, 246, 0.25);
   padding: 0 12px;
 }
 
-.icon-btn-accent:hover {
+.toolbar-btn-accent:hover {
   background: rgba(139, 92, 246, 0.22);
   color: #c4b5fd;
   border-color: rgba(139, 92, 246, 0.45);
@@ -2462,6 +2462,22 @@ tbody tr.is-selected {
 
 :root[data-theme="light"] .overview-table-toolbar {
   background: rgba(255, 255, 255, 0.96);
+}
+
+:root[data-theme="light"] .toolbar-btn {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+:root[data-theme="light"] .toolbar-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+:root[data-theme="light"] .toolbar-search {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+:root[data-theme="light"] .toolbar-search:focus-within {
+  background: rgba(0, 0, 0, 0.05);
 }
 
 .users-table tbody td {
