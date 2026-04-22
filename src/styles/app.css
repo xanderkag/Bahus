@@ -884,6 +884,19 @@
   border-color: rgba(79, 140, 255, 0.45);
 }
 
+.icon-btn-accent {
+  background: rgba(139, 92, 246, 0.12);
+  color: #a78bfa;
+  border-color: rgba(139, 92, 246, 0.25);
+  padding: 0 12px;
+}
+
+.icon-btn-accent:hover {
+  background: rgba(139, 92, 246, 0.22);
+  color: #c4b5fd;
+  border-color: rgba(139, 92, 246, 0.45);
+}
+
 .toolbar-divider {
   width: 1px;
   height: 20px;

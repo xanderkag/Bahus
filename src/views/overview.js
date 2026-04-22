@@ -828,10 +828,24 @@ export function renderOverview(state) {
               <p>Импортированные файлы, поиск и быстрый переход в КП.</p>
             </div>
             <div class="toolbar-actions overview-table-actions">
-              <button class="ghost-btn icon-action-btn table-add-btn" data-action="openUploadFilesModal" title="Загрузить прайс-лист">+</button>
-              <button class="ghost-btn compact-action-btn" data-action="dispatchSelectedImport" ${!state.ui.selectedImportId ? "disabled" : ""} title="Отправить обрабатывать ИИ">✨ ИИ</button>
-              <button class="ghost-btn icon-action-btn table-danger-btn" style="color: var(--status-bad);" data-action="promptDeleteImport" ${!state.ui.selectedImportId ? "disabled" : ""} title="Удалить выбранный прайс">🗑️</button>
-              <button class="ghost-btn compact-action-btn" data-action="openExportModal" title="Экспорт списка">Экспорт</button>
+            <div class="toolbar-actions overview-table-actions">
+              <button class="icon-btn" data-action="openUploadFilesModal" title="Загрузить прайс-лист поставщика">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+                <span>Загрузить</span>
+              </button>
+              <button class="icon-btn" data-action="dispatchSelectedImport" ${!state.ui.selectedImportId ? "disabled" : ""} title="Отправить выбранный файл на обработку ИИ">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/><path d="M19 3v4"/><path d="M21 5h-4"/></svg>
+                <span>Обработать</span>
+              </button>
+              <div class="toolbar-divider"></div>
+              <button class="icon-btn icon-btn-danger" data-action="promptDeleteImport" ${!state.ui.selectedImportId ? "disabled" : ""} title="Удалить выбранный прайс">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                <span>Удалить</span>
+              </button>
+              <button class="icon-btn" data-action="openExportModal" title="Экспорт списка импортов">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                <span>Экспорт</span>
+              </button>
             </div>
           </div>
           <div class="table-wrap compact-table overview-imports-table" style="flex: 1;">
@@ -895,21 +909,43 @@ export function renderOverview(state) {
           </div>
         </div>
         <div class="table-wrap overview-table-wrap">
-          <div class="overview-table-toolbar" style="display: flex; gap: 12px; align-items: center; margin-bottom: 12px;">
+          <div class="overview-table-toolbar">
             <div class="toolbar-actions overview-table-actions">
-              <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn" data-action="openTableSettings" data-table="overview" title="Настроить столбцы" aria-label="Настройки">⚙</button>
-              <div style="width: 1px; height: 16px; background: var(--border-color); margin: 0 4px;"></div>
+              <button class="icon-btn" data-action="openTableSettings" data-table="overview" title="Настроить видимость и порядок столбцов">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><circle cx="12" cy="4" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="16" cy="20" r="2"/></svg>
+                <span>Столбцы</span>
+              </button>
+              <div class="toolbar-divider"></div>
               <span class="overview-selection-pill">Выбрано ${selectedCount}</span>
-              <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn" data-action="selectAllVisibleRows" title="Выделить все строки после текущей фильтрации" aria-label="Выделить все">◎</button>
-              <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn" data-action="clearSelectedRows" title="Снять текущее выделение" aria-label="Снять выделение">◌</button>
-              <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn icon-action-good" data-action="promptMarkSelectedChecked" title="Отметить выделенные строки как проверенные" aria-label="Проверено">✓</button>
-              <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn icon-action-bad" data-action="excludeSelectedRows" title="Исключить выделенные строки из дальнейшей обработки" aria-label="Исключить">×</button>
-              <button class="ghost-btn compact-action-btn table-action-btn" data-action="openDetailsForSelectedRow" ${selectedCount !== 1 ? "disabled" : ""} title="Изменить детали (Для одной выбранной строки)">Детали</button>
-              <button class="ghost-btn compact-action-btn table-action-btn" data-action="addSelectionToQuote" title="Добавить выделенные строки в состав КП">В КП</button>
-              <button class="primary-btn compact-action-btn table-action-btn" data-action="buildQuote" title="Сформировать рабочий сценарий коммерческого предложения по выделенным строкам">Сформировать КП</button>
+              <button class="icon-btn" data-action="selectAllVisibleRows" title="Выделить все строки после текущей фильтрации">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                <span>Выбрать все</span>
+              </button>
+              <button class="icon-btn" data-action="clearSelectedRows" title="Снять текущее выделение">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
+                <span>Снять</span>
+              </button>
+              <div class="toolbar-divider"></div>
+              <button class="icon-btn icon-btn-danger" data-action="excludeSelectedRows" title="Исключить выделенные строки из дальнейшей обработки">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                <span>Исключить</span>
+              </button>
+              <button class="icon-btn" data-action="openDetailsForSelectedRow" ${selectedCount !== 1 ? "disabled" : ""} title="Подробная информация о позиции">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
+                <span>Детали</span>
+              </button>
+              <button class="icon-btn icon-btn-primary" data-action="addSelectionToQuote" title="Добавить выделенные строки в состав КП">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                <span>В&nbsp;КП</span>
+              </button>
+              <button class="icon-btn icon-btn-accent" data-action="buildQuote" title="Сформировать рабочий сценарий КП по выделенным строкам">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" x2="12" y1="18" y2="12"/><line x1="9" x2="15" y1="15" y2="15"/></svg>
+                <span>Создать&nbsp;КП</span>
+              </button>
             </div>
-            <div class="search-input-wrap" style="max-width: 320px; margin-left: auto;">
-              <input type="text" class="text-input" placeholder="Поиск по названию или коду" style="width: 100%; border-radius: 8px; font-size: 13px;" value="${escapeHtml(state.ui.productSearchQuery || '')}" data-input="searchProducts" />
+            <div class="toolbar-search">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="toolbar-search-icon"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" class="toolbar-search-input" placeholder="Поиск по всем полям..." value="${escapeHtml(state.ui.productSearchQuery || '')}" data-input="searchProducts" />
             </div>
           </div>
           <table>
