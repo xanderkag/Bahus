@@ -322,7 +322,10 @@ function renderQuotesTable(state) {
           <td>${formatPercent(summary.marginPct)}</td>
           <td><span class="status-pill">${escapeHtml(formatQuoteStatus(quote.status))}</span></td>
           <td>
-            <button class="ghost-btn compact-action-btn icon-action-btn table-icon-btn" data-action="selectQuote" data-quote-id="${quote.id}" title="Открыть КП" aria-label="Открыть КП">→</button>
+            <button class="toolbar-btn" data-action="selectQuote" data-quote-id="${quote.id}" title="Открыть позиции КП" aria-label="Открыть КП">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+              <span>Открыть</span>
+            </button>
           </td>
         </tr>
       `;
@@ -393,10 +396,16 @@ function renderQuoteTable(state) {
           <td>${formatMoney(item.lineSum, currency)}</td>
           <td>${pricingState}</td>
           <td>
-            <button class="ghost-btn table-row-btn btn-with-icon" data-action="toggleAlternativeBlock" data-item-id="${item.id}"><span class="btn-icon-glyph">≈</span><span>Аналоги</span></button>
+            <button class="toolbar-btn" data-action="toggleAlternativeBlock" data-item-id="${item.id}" title="Показать аналоги для этой позиции">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 16 4-4-4-4"/><path d="m17 16-4-4 4-4"/></svg>
+              <span>Аналоги</span>
+            </button>
           </td>
           <td>
-            <button class="ghost-btn table-row-btn table-row-btn-danger btn-with-icon" data-action="removeQuoteItem" data-item-id="${item.id}"><span class="btn-icon-glyph">−</span><span>Удалить</span></button>
+            <button class="toolbar-btn toolbar-btn-danger" data-action="removeQuoteItem" data-item-id="${item.id}" title="Убрать позицию из КП">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+              <span>Удалить</span>
+            </button>
           </td>
         </tr>
         ${
@@ -433,7 +442,10 @@ function renderAlternativesTable(itemId, alternatives) {
           <strong>Альтернативные товары</strong>
           <span class="table-subtitle">${alternatives.length} вариантов для быстрой замены позиции</span>
         </div>
-        <button class="ghost-btn compact-action-btn table-action-btn btn-with-icon" data-action="useBestAlternative" data-item-id="${itemId}"><span class="btn-icon-glyph">★</span><span>Выбрать лучший</span></button>
+        <button class="toolbar-btn toolbar-btn-primary" data-action="useBestAlternative" data-item-id="${itemId}" title="Автоматически выбрать лучший аналог">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          <span>Выбрать лучший</span>
+        </button>
       </div>
       <table class="nested-table quote-alternatives-table">
         <thead>
@@ -467,7 +479,10 @@ function renderAlternativesTable(itemId, alternatives) {
                     </div>
                   </td>
                   <td>
-                    <button class="${index === 0 ? "primary-btn" : "ghost-btn"} compact-action-btn table-action-btn btn-with-icon" data-action="applyAlternative" data-item-id="${itemId}" data-alternative-id="${alternative.id}"><span class="btn-icon-glyph">${index === 0 ? "★" : "+"}</span><span>${index === 0 ? "Выбрать лучший" : "Выбрать"}</span></button>
+                    <button class="toolbar-btn ${index === 0 ? "toolbar-btn-primary" : ""}" data-action="applyAlternative" data-item-id="${itemId}" data-alternative-id="${alternative.id}" title="Заменить текущую позицию на этот аналог">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                      <span>${index === 0 ? "Выбрать лучший" : "Выбрать"}</span>
+                    </button>
                   </td>
                 </tr>
               `,
@@ -571,8 +586,14 @@ export function renderQuote(state) {
             <p>Рабочий список КП с выбором строки, созданием нового предложения и быстрым переходом в детализацию.</p>
           </div>
           <div class="toolbar-actions">
-            <button class="ghost-btn" data-action="resetQuoteListFilters">Сбросить фильтры</button>
-            <button class="primary-btn btn-with-icon" data-action="openNewQuoteModal"><span class="btn-icon-glyph">+</span><span>Добавить КП</span></button>
+            <button class="toolbar-btn" data-action="resetQuoteListFilters" title="Сбросить все фильтры в таблице КП">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M7 12h10"/><path d="M10 18h4"/></svg>
+              <span>Сбросить фильтры</span>
+            </button>
+            <button class="toolbar-btn toolbar-btn-primary" data-action="openNewQuoteModal" title="Создать новое коммерческое предложение">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+              <span>Создать КП</span>
+            </button>
           </div>
         </div>
         <div class="table-wrap quote-list-wrap">
