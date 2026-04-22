@@ -600,19 +600,32 @@ export function renderQuote(state) {
       </article>
       <article class="panel quote-items-panel">
         <div class="panel-header quote-panel-header">
-          <div class="quote-panel-headline">
-            <h2>Позиции КП</h2>
-            <p>
-              ${escapeHtml(currentQuoteRecord?.meta?.quoteNumber || meta.quoteNumber)} · ${escapeHtml(currentQuoteRecord?.meta?.requestTitle || "Выбранное коммерческое предложение")}
-            </p>
+          <div class="quote-panel-headline" style="display: flex; align-items: flex-start; gap: 8px;">
+            <div>
+              <h2 style="display: flex; align-items: center; gap: 8px;">
+                Позиции КП
+                <button class="ghost-btn icon-btn" style="padding: 4px; height: auto; min-width: 0; color: var(--muted);" data-action="openQuoteSettings" title="Настроить параметры КП (клиент, файлы запроса)">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                </button>
+              </h2>
+              <p>
+                ${escapeHtml(currentQuoteRecord?.meta?.quoteNumber || meta.quoteNumber)} · ${escapeHtml(currentQuoteRecord?.meta?.requestTitle || "Выбранное коммерческое предложение")}
+              </p>
+            </div>
           </div>
           <div class="toolbar-actions quote-actions">
-            <div class="action-group">
-              <button class="ghost-btn" data-action="openQuoteSettings">Параметры КП</button>
-              <button class="ghost-btn btn-with-icon" data-action="goToReview"><span class="btn-icon-glyph">+</span><span>Добавить позицию</span></button>
-              <button class="ghost-btn" data-action="runQuoteAiProcessing" ${canRunAi ? "" : "disabled"}>${aiStatus === "running" ? "Обработка ИИ..." : "Обработка ИИ"}</button>
-              <button class="primary-btn btn-with-icon" data-action="downloadQuoteExcel"><span class="btn-icon-glyph">↓</span><span>Скачать Excel</span></button>
-            </div>
+            <button class="toolbar-btn" data-action="goToReview" title="Вернуться в каталог и добавить новые позиции">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+              <span>Добавить позицию</span>
+            </button>
+            <button class="toolbar-btn" data-action="runQuoteAiProcessing" ${canRunAi ? "" : "disabled"} title="Запустить ИИ-подбор по прикрепленному файлу клиента">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/><path d="M19 3v4"/><path d="M21 5h-4"/></svg>
+              <span>${aiStatus === "running" ? "Обработка ИИ..." : "Авто-подбор (ИИ)"}</span>
+            </button>
+            <button class="toolbar-btn toolbar-btn-primary" data-action="downloadQuoteExcel" title="Скачать готовое КП в Excel">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+              <span>Скачать Excel</span>
+            </button>
           </div>
         </div>
         <div class="quote-alert-strip">
