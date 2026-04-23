@@ -718,29 +718,7 @@ function renderLinkImportModal(state) {
   `;
 }
 
-function renderCustomMarkupModal(state) {
-  if (state.ui.modal !== "custom-markup") return "";
-  return `
-    <div class="modal-overlay" data-action="closeModal">
-      <div class="app-dialog" data-stop-propagation="true" style="width:min(360px,94vw);">
-        <div class="dialog-header">
-          <div><h3>Произвольная наценка</h3></div>
-          <button class="ghost-btn" data-action="closeModal">✕</button>
-        </div>
-        <div style="padding:16px 20px 20px;display:grid;gap:12px;">
-          <label style="display:grid;gap:6px;font-size:13px;">
-            Наценка, %
-            <input id="custom-markup-input" class="input" type="number" min="1" max="1000" placeholder="Например: 35" style="font-size:16px;" />
-          </label>
-          <div style="display:flex;gap:8px;justify-content:flex-end;">
-            <button class="ghost-btn" data-action="closeModal">Отмена</button>
-            <button class="toolbar-btn toolbar-btn-accent" data-action="applyCustomMarkup">Применить</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-}
+
 
 function renderProcessingModal(state) {
   if (state.ui.modal !== "processing") return "";
@@ -825,7 +803,10 @@ export function renderQuote(state) {
               <button class="markup-btn" data-action="applyMarkupToSelectedItems" data-percent="10" title="+10% к закупке">+10%</button>
               <button class="markup-btn" data-action="applyMarkupToSelectedItems" data-percent="20" title="+20% к закупке">+20%</button>
               <button class="markup-btn" data-action="applyMarkupToSelectedItems" data-percent="30" title="+30% к закупке">+30%</button>
-              <button class="markup-btn markup-btn-custom" data-action="openCustomMarkupModal" title="Произвольный процент">+...%</button>
+              <div style="display:flex;align-items:center;gap:4px;margin-left:4px;">
+                <input type="number" id="custom-markup-input" class="input" style="width:48px;height:26px;padding:0 4px;font-size:12px;text-align:center;border-radius:6px;border:1px dashed var(--border);background:var(--surface-2);color:var(--text-1);" placeholder="%">
+                <button class="markup-btn markup-btn-custom" data-action="applyCustomMarkup" title="Применить" style="height:26px;padding:0 8px;">ОК</button>
+              </div>
             </div>
             <div class="toolbar-divider"></div>
             <button class="toolbar-btn" data-action="goToReview" title="Добавить позиции из обзора">
@@ -858,7 +839,6 @@ export function renderQuote(state) {
 
       ${renderQuotePreviewModal(state)}
       ${renderLinkImportModal(state)}
-      ${renderCustomMarkupModal(state)}
       ${renderProcessingModal(state)}
     </section>
   `;

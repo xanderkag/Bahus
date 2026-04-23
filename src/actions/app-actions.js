@@ -3035,12 +3035,7 @@ export function createActions(store, backend = null) {
       scheduleAutoSave();
     },
 
-    openCustomMarkupModal() {
-      update((state) => ({
-        ...state,
-        ui: { ...state.ui, modal: "custom-markup" },
-      }));
-    },
+
 
     applyCustomMarkup() {
       const input = document.getElementById("custom-markup-input");
@@ -3048,7 +3043,7 @@ export function createActions(store, backend = null) {
       if (isNaN(percent) || percent <= 0) return;
       // Reuse applyMarkupToSelectedItems logic
       store.dispatch("applyMarkupToSelectedItems", { percent });
-      update((state) => ({ ...state, ui: { ...state.ui, modal: null } }));
+      if (input) input.value = "";
     },
 
   };
