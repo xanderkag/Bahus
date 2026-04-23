@@ -2891,34 +2891,39 @@ export function createActions(store, backend = null) {
       const quoteId = state.ui.selectedQuoteId;
       if (!quoteId || !importId) return;
 
-      // Optimistic update
+      // Close modal optimistically
       update((s) => ({
         ...s,
-        quote: {
-          ...s.quote,
-          meta: {
-            ...s.quote.meta,
-            linkedImportIds: [...new Set([...(s.quote.meta.linkedImportIds || []), importId])],
-          },
-        },
         ui: { ...s.ui, modal: null },
       }));
 
       if (backend) {
         try {
           await backend.linkImportToQuote(quoteId, importId);
+          // Reload full quote from backend to get the newly inserted quote_item rows
+          const res = await backend.getQuote(quoteId);
+          if (res?.item) {
+            const returnedQuote = res.item;
+            update((s) => {
+              const updatedRecord = {
+                ...(s.entities.quotesById?.[quoteId] || {}),
+                ...returnedQuote,
+              };
+              const hydrated = hydrateQuoteFromRecord(s, updatedRecord);
+              return {
+                ...hydrated,
+                entities: {
+                  ...hydrated.entities,
+                  quotesById: {
+                    ...hydrated.entities.quotesById,
+                    [quoteId]: updatedRecord,
+                  },
+                },
+              };
+            });
+          }
         } catch (err) {
-          // Rollback on failure
-          update((s) => ({
-            ...s,
-            quote: {
-              ...s.quote,
-              meta: {
-                ...s.quote.meta,
-                linkedImportIds: (s.quote.meta.linkedImportIds || []).filter((id) => id !== importId),
-              },
-            },
-          }));
+          console.error("Failed to link import to quote", err);
         }
       }
     },
@@ -2928,7 +2933,7 @@ export function createActions(store, backend = null) {
       const quoteId = state.ui.selectedQuoteId;
       if (!quoteId || !importId) return;
 
-      // Optimistic update
+      // Optimistic: remove from linkedImportIds immediately
       update((s) => ({
         ...s,
         quote: {
@@ -2943,7 +2948,30 @@ export function createActions(store, backend = null) {
       if (backend) {
         try {
           await backend.unlinkImportFromQuote(quoteId, importId);
+          // Reload full quote to reflect removed items
+          const res = await backend.getQuote(quoteId);
+          if (res?.item) {
+            const returnedQuote = res.item;
+            update((s) => {
+              const updatedRecord = {
+                ...(s.entities.quotesById?.[quoteId] || {}),
+                ...returnedQuote,
+              };
+              const hydrated = hydrateQuoteFromRecord(s, updatedRecord);
+              return {
+                ...hydrated,
+                entities: {
+                  ...hydrated.entities,
+                  quotesById: {
+                    ...hydrated.entities.quotesById,
+                    [quoteId]: updatedRecord,
+                  },
+                },
+              };
+            });
+          }
         } catch (err) {
+          console.error("Failed to unlink import from quote", err);
           // Rollback
           update((s) => ({
             ...s,

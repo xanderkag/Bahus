@@ -131,6 +131,9 @@ export function createBackend(apiBaseUrl) {
     loadQuotes() {
       return fetchJson(`${apiBaseUrl}/quotes`);
     },
+    getQuote(quoteId) {
+      return fetchJson(`${apiBaseUrl}/quotes/${encodeURIComponent(quoteId)}`);
+    },
     createQuote(payload) {
       return fetchJson(`${apiBaseUrl}/quotes`, {
         method: "POST",

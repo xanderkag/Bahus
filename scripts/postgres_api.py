@@ -2288,6 +2288,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         items = conn.execute(
             '''
             select
+              id,
               id as source_product_id,
               name_snapshot as name,
               volume_l,
@@ -2304,6 +2305,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         ).fetchall()
         
         for item in items:
+            item["id"] = str(item["id"])
             item["source_product_id"] = str(item["source_product_id"])
 
         # Fetch linked import ids
@@ -2418,10 +2420,11 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 )
                 SELECT 
                     %s, id, %s + row_index,
-                    COALESCE(raw_name, 'Unknown item'), volume, 
-                    COALESCE(stock_quantity, 1), price, rrc, price
+                    COALESCE(raw_name, 'Unknown item'), volume_l, 
+                    1, purchase_price, rrc_min, COALESCE(rrc_min, purchase_price)
                 FROM import_row
                 WHERE import_batch_id = %s
+                AND excluded = false
                 AND id NOT IN (SELECT source_import_row_id FROM quote_item WHERE quote_document_id = %s AND source_import_row_id IS NOT NULL)
                 """,
                 (quote_id, max_line, import_id, quote_id)
