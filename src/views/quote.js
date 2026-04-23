@@ -321,10 +321,13 @@ function renderQuotesTable(state) {
           <td>${formatMoney(summary.sale)}</td>
           <td>${formatPercent(summary.marginPct)}</td>
           <td><span class="status-pill">${escapeHtml(formatQuoteStatus(quote.status))}</span></td>
-          <td>
+          <td style="display: flex; gap: 4px;">
             <button class="toolbar-btn" data-action="selectQuote" data-quote-id="${quote.id}" title="Открыть позиции КП" aria-label="Открыть КП">
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
               <span>Открыть</span>
+            </button>
+            <button class="toolbar-btn ghost-btn" data-action="deleteQuote" data-quote-id="${quote.id}" title="Удалить КП" aria-label="Удалить КП" style="color: var(--danger); padding: 4px 8px;">
+              ✕
             </button>
           </td>
         </tr>

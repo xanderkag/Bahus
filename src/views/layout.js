@@ -176,7 +176,9 @@ function renderNewQuoteModal(state) {
         </div>
         <div class="toolbar-actions justify-end">
           <button class="ghost-btn" data-action="closeModal">Отмена</button>
-          <button class="primary-btn" data-action="createNewQuote">Создать КП</button>
+          <button class="primary-btn" data-action="createNewQuote" ${draft.isCreating ? "disabled" : ""}>
+            ${draft.isCreating ? "Создание..." : "Создать КП"}
+          </button>
         </div>
       </div>
     </div>

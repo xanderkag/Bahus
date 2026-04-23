@@ -143,6 +143,11 @@ export function createBackend(apiBaseUrl) {
         body: JSON.stringify(payload),
       });
     },
+    deleteQuote(quoteId) {
+      return fetchJson(`${apiBaseUrl}/quotes/${encodeURIComponent(quoteId)}`, {
+        method: "DELETE",
+      });
+    },
     enrichRowPhoto(rowId) {
       return fetchJson(`${apiBaseUrl}/rows/${encodeURIComponent(rowId)}/enrich-photo`, {
         method: "POST"

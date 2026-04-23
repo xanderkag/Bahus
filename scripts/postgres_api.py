@@ -364,8 +364,18 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         parts = route.split("/")
         if route.startswith("/api/quotes/") and len(parts) == 6 and parts[4] == "imports":
             return self.handle_unlink_import_from_quote(parts[3], parts[5])
+        if route.startswith("/api/quotes/") and len(parts) == 4:
+            return self.handle_delete_quote(parts[3])
 
         return self.respond_json({"error": "Not found", "path": route}, status=HTTPStatus.NOT_FOUND)
+
+    def handle_delete_quote(self, quote_id: str) -> None:
+        if not self.validate_uuid(quote_id):
+            return self.respond_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
+        with self.db() as conn:
+            conn.execute("DELETE FROM quote_document WHERE id = %s", (quote_id,))
+            conn.commit()
+        return self.respond_json({"ok": True})
 
     def handle_delete_import(self, import_id: str) -> None:
         with self.db() as conn:
@@ -2394,6 +2404,29 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 """,
                 (quote_id, import_id),
             )
+            
+            # Get max line_no
+            max_line_row = conn.execute("SELECT COALESCE(MAX(line_no), 0) as m FROM quote_item WHERE quote_document_id = %s", (quote_id,)).fetchone()
+            max_line = max_line_row["m"] if max_line_row else 0
+            
+            # Insert items from import_row
+            conn.execute(
+                """
+                INSERT INTO quote_item (
+                    quote_document_id, source_import_row_id, line_no, 
+                    name_snapshot, volume_l, qty, purchase_price, rrc_min, sale_price
+                )
+                SELECT 
+                    %s, id, %s + row_index,
+                    COALESCE(raw_name, 'Unknown item'), volume, 
+                    COALESCE(stock_quantity, 1), price, rrc, price
+                FROM import_row
+                WHERE import_batch_id = %s
+                AND id NOT IN (SELECT source_import_row_id FROM quote_item WHERE quote_document_id = %s AND source_import_row_id IS NOT NULL)
+                """,
+                (quote_id, max_line, import_id, quote_id)
+            )
+            
             conn.commit()
         return self.respond_json({"ok": True, "quote_id": quote_id, "import_id": import_id})
 
@@ -2406,6 +2439,16 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             conn.execute(
                 "DELETE FROM quote_import_link WHERE quote_id = %s AND import_id = %s",
                 (quote_id, import_id),
+            )
+            conn.execute(
+                """
+                DELETE FROM quote_item 
+                WHERE quote_document_id = %s 
+                AND source_import_row_id IN (
+                    SELECT id FROM import_row WHERE import_batch_id = %s
+                )
+                """,
+                (quote_id, import_id)
             )
             conn.commit()
         return self.respond_json({"ok": True})

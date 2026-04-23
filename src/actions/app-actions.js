@@ -1459,11 +1459,21 @@ export function createActions(store, backend = null) {
     },
 
     async createNewQuote() {
+      const snapshot = store.getState();
+      const draft = snapshot.ui.newQuoteDraft || {};
+      if (draft.isCreating) return;
+      
+      update((state) => ({
+        ...state,
+        ui: {
+          ...state.ui,
+          newQuoteDraft: { ...(state.ui.newQuoteDraft || {}), isCreating: true },
+        },
+      }));
+
       let createdQuoteId = null;
       let shouldAutoRunAi = false;
       try {
-        const snapshot = store.getState();
-        const draft = snapshot.ui.newQuoteDraft || {};
         const client = snapshot.entities.clientsById?.[draft.clientId] || null;
         
         const aiState = deriveQuoteAiState(
@@ -1587,6 +1597,7 @@ export function createActions(store, backend = null) {
             ...state.ui,
             newQuoteDraft: {
               ...(state.ui?.newQuoteDraft || {}),
+              isCreating: false,
               uploadError: error.message || "Ошибка при создании КП: " + error.toString(),
             },
           },
@@ -1599,6 +1610,45 @@ export function createActions(store, backend = null) {
           if (current.ui.selectedQuoteId !== createdQuoteId) return;
           store.actions.runQuoteAiProcessing();
         }, 0);
+      }
+    },
+    async deleteQuote(button) {
+      const quoteId = button.dataset.quoteId;
+      if (!quoteId) return;
+      if (!confirm("Вы уверены, что хотите удалить это КП? Это действие нельзя отменить.")) return;
+
+      try {
+        await backend.deleteQuote(quoteId);
+        update((state) => {
+          const newOrder = state.entities.quoteOrder?.filter(id => id !== quoteId) || [];
+          const newQuotesById = { ...state.entities.quotesById };
+          delete newQuotesById[quoteId];
+          
+          let nextState = {
+            ...state,
+            entities: {
+              ...state.entities,
+              quoteOrder: newOrder,
+              quotesById: newQuotesById,
+            }
+          };
+          
+          if (state.ui.selectedQuoteId === quoteId) {
+            nextState.ui = {
+              ...nextState.ui,
+              selectedQuoteId: null,
+            };
+            nextState.quote = {
+              itemOrder: [],
+              itemsById: {},
+              meta: null,
+            };
+          }
+          return nextState;
+        });
+      } catch (err) {
+        console.error("Failed to delete quote", err);
+        alert("Ошибка при удалении КП: " + err.message);
       }
     },
     openUploadFilesModal() {
