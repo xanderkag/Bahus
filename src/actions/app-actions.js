@@ -567,13 +567,13 @@ export function createActions(store, backend = null) {
         itemsById: nextItemsById,
         meta: {
           ...state.quote.meta,
-          clientId: draft.meta?.clientId || draft.meta?.client_id || state.quote.meta.clientId,
-          clientName: draft.meta?.clientName || draft.meta?.client_name || state.quote.meta.clientName,
-          requestTitle: draft.meta?.requestTitle || draft.meta?.request_title || state.quote.meta.requestTitle,
-          requestFiles: draft.meta?.requestFiles || draft.meta?.request_files || state.quote.meta.requestFiles,
-          quoteNumber: draft.meta?.quoteNumber || draft.meta?.quote_number || state.quote.meta.quoteNumber,
-          quoteDate: draft.meta?.quoteDate || draft.meta?.quote_date || state.quote.meta.quoteDate,
-          managerName: draft.meta?.managerName || draft.meta?.manager_name || state.quote.meta.managerName,
+          clientId: draft.meta?.clientId || state.quote.meta.clientId,
+          clientName: draft.meta?.clientName || state.quote.meta.clientName,
+          requestTitle: draft.meta?.requestTitle || state.quote.meta.requestTitle,
+          requestFiles: draft.meta?.requestFiles || state.quote.meta.requestFiles,
+          quoteNumber: draft.meta?.quoteNumber || state.quote.meta.quoteNumber,
+          quoteDate: draft.meta?.quoteDate || state.quote.meta.quoteDate,
+          managerName: draft.meta?.managerName || state.quote.meta.managerName,
           note: draft.meta?.note || state.quote.meta.note,
           mode: draft.meta?.mode || state.quote.meta.mode,
         },
@@ -1345,7 +1345,7 @@ export function createActions(store, backend = null) {
     openQuotePreview() {
       update((state) => ({ ...state, ui: { ...state.ui, modal: "quote-preview" } }));
     },
-    openQuoteSettings() {
+    openEditQuoteModal() {
       update((state) => ({
         ...state,
         ui: {

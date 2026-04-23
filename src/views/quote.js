@@ -30,18 +30,6 @@ function formatQuoteStatus(status) {
   return QUOTE_STATUS_LABELS[status] || formatValue(status);
 }
 
-const AI_STATUS_LABELS = {
-  idle: "Не запускали",
-  queued: "В очереди",
-  running: "В работе",
-  ready: "Готово",
-  error: "Ошибка",
-};
-
-function formatAiProcessingStatus(status) {
-  return AI_STATUS_LABELS[status] || formatValue(status);
-}
-
 function summarizeQuoteRecord(quote) {
   const items = quote.items || [];
   const summary = items.reduce(
@@ -570,7 +558,7 @@ function renderQuoteFilesPanel(state) {
   const quoteId = state.ui.selectedQuoteId;
   const linkedImportIds = state.quote?.meta?.linkedImportIds || [];
   const allImports = state.entities?.importOrder?.map((id) => state.entities.importsById[id]).filter(Boolean) || [];
-  const linkedImports = linkedImports_list(allImports, linkedImportIds);
+  const linkedImports = getLinkedImports(allImports, linkedImportIds);
   const unlinkedImports = allImports.filter((imp) => !linkedImportIds.includes(imp.id));
 
   if (!quoteId) {
@@ -652,7 +640,7 @@ function renderQuoteFilesPanel(state) {
   `;
 }
 
-function linkedImports_list(allImports, linkedImportIds) {
+function getLinkedImports(allImports, linkedImportIds) {
   return allImports.filter((imp) => linkedImportIds.includes(imp.id));
 }
 
@@ -755,19 +743,10 @@ function renderCustomMarkupModal(state) {
 }
 
 export function renderQuote(state) {
-
   const summary = getQuoteSummary(state);
   const meta = getQuoteMeta(state);
   const alerts = getQuoteAlerts(state);
-  const draftResource = state.runtime?.resources?.quoteDraft;
   const currentQuoteRecord = getCurrentQuoteRecord(state);
-  const aiStatus = meta.aiProcessingStatus || "idle";
-  const workflowEndpoint = String(state.settings?.workflow_endpoint || "");
-  const hasRealWorkflowEndpoint = /^https?:\/\//i.test(workflowEndpoint);
-  const localQuoteFile = state.ui.selectedQuoteId ? state.runtime?.quoteRequestFilesByQuoteId?.[state.ui.selectedQuoteId] : null;
-  const hasRemoteFile = Boolean(meta.requestFiles?.some((file) => file?.downloadUrl || file?.storagePath)) || Boolean(localQuoteFile);
-  const hasInput = Boolean(meta.requestFiles?.length || meta.note);
-  const canRunAi = hasInput && hasRealWorkflowEndpoint && hasRemoteFile;
 
   return `
     <section class="view-stack quote-workspace">
@@ -820,7 +799,7 @@ export function renderQuote(state) {
           <div class="quote-panel-headline">
             <h2 style="display:flex;align-items:center;gap:8px;">
               Позиции КП
-              <button class="ghost-btn icon-btn" style="padding:4px;height:auto;min-width:0;color:var(--muted);" data-action="openQuoteSettings" title="Настройки КП">
+              <button class="ghost-btn icon-btn" style="padding:4px;height:auto;min-width:0;color:var(--muted);" data-action="openEditQuoteModal" title="Редактировать параметры КП">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
               </button>
             </h2>
