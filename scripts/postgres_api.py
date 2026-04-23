@@ -824,7 +824,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             """
             select 
                 import_batch_id,
-                id, file_name, original_name, mime_type, size_bytes, file_kind, note, 
+                id, storage_path, original_name, mime_type, size_bytes, file_kind, note, 
                 processing_status, processing_pipeline, last_error, uploaded_at 
             from import_file 
             where import_batch_id = any(%s)
@@ -834,7 +834,8 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         for r in f_rows:
             files_map[str(r["import_batch_id"])].append({
                 "id": str(r["id"]),
-                "file_name": r["file_name"],
+                "file_name": r["original_name"],
+                "storage_path": r["storage_path"],
                 "original_name": r["original_name"],
                 "mime_type": r["mime_type"],
                 "size_bytes": r["size_bytes"],
