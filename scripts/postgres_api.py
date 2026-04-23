@@ -2285,11 +2285,22 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         # Ensure migration is applied
         self._ensure_quote_import_link_table(conn)
 
+        # Fetch client name via join
+        client_name = ""
+        if row["client_id"]:
+            client_row = conn.execute(
+                "SELECT name FROM client_account WHERE id = %s", (row["client_id"],)
+            ).fetchone()
+            if client_row:
+                client_name = client_row["name"] or ""
+
         items = conn.execute(
             '''
             select
               id,
               id as source_product_id,
+              source_import_row_id,
+              line_no,
               name_snapshot as name,
               volume_l,
               purchase_price,
@@ -2304,9 +2315,11 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             (row["id"],),
         ).fetchall()
         
-        for item in items:
+        for i, item in enumerate(items):
             item["id"] = str(item["id"])
             item["source_product_id"] = str(item["source_product_id"])
+            item["source_import_row_id"] = str(item["source_import_row_id"]) if item["source_import_row_id"] else None
+            item["row_index"] = i + 1
 
         # Fetch linked import ids
         link_rows = conn.execute(
@@ -2315,14 +2328,23 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         ).fetchall()
         linked_import_ids = [str(r["import_id"]) for r in link_rows]
 
+        # Read request_title safely (column may not exist yet)
+        request_title = ""
+        try:
+            request_title = row["request_title"] or ""
+        except (KeyError, Exception):
+            pass
+
         return {
             "id": str(row["id"]),
             "status": row["status"],
             "meta": {
                 "clientId": str(row["client_id"]) if row["client_id"] else "",
+                "clientName": client_name,
                 "quoteNumber": row["quote_number"],
                 "quoteDate": str(row["quote_date"]) if row["quote_date"] else "",
-                "requestTitle": "",
+                "requestTitle": request_title,
+                "managerName": "Александр",
                 "note": row["note"] or "",
                 "mode": row["mode"],
                 "aiProcessingStatus": "done",
@@ -2574,6 +2596,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             client_id = None
 
         note = payload.get("meta", {}).get("note", "")
+        request_title = payload.get("meta", {}).get("requestTitle", "")
         status = "processing" if files else "draft"
 
         with self.db() as conn:
@@ -2584,11 +2607,11 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
 
             row = conn.execute(
                 '''
-                insert into quote_document (client_id, quote_number, quote_date, note, status)
-                values ((select id from client_account where id = %s), %s, CURRENT_DATE, %s, %s)
+                insert into quote_document (client_id, quote_number, quote_date, note, request_title, status)
+                values ((select id from client_account where id = %s), %s, CURRENT_DATE, %s, %s, %s)
                 returning *
                 ''',
-                (client_id, quote_number, note, status),
+                (client_id, quote_number, note, request_title, status),
             ).fetchone()
             quote_id = str(row["id"])
             quote = self.serialize_quote(conn, row)
@@ -2664,32 +2687,84 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             
         payload = self.read_json_body()
         items = payload.get("items", [])
+        meta = payload.get("meta", {})
         
         with self.db() as conn:
             row = conn.execute("select * from quote_document where id = %s", (quote_id,)).fetchone()
             if not row:
                 return self.respond_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
-                
-            conn.execute("delete from quote_item where quote_document_id = %s", (quote_id,))
-            
+
+            # Update quote_document meta fields
+            client_id = meta.get("clientId") or None
+            if client_id and not self.validate_uuid(client_id):
+                client_id = None
+            conn.execute(
+                """
+                UPDATE quote_document 
+                SET note = %s, mode = %s, client_id = %s, updated_at = now()
+                WHERE id = %s
+                """,
+                (meta.get("note", ""), meta.get("mode", "internal"), client_id, quote_id)
+            )
+
+            # Update items: use id-based upsert to preserve source_import_row_id
+            # Collect item ids that the frontend is sending back
+            incoming_ids = set()
             for i, item in enumerate(items):
-                conn.execute(
-                    '''
-                    insert into quote_item (quote_document_id, line_no, name_snapshot, volume_l, purchase_price, rrc_min, sale_price, qty)
-                    values (%s, %s, %s, %s, %s, %s, %s, %s)
-                    ''',
-                    (
-                        quote_id,
-                        i + 1,
-                        item.get("name") or item.get("raw_name"),
-                        item.get("volume_l"),
-                        item.get("purchase_price"),
-                        item.get("rrc_min"),
-                        item.get("sale_price"),
-                        item.get("qty", 1)
+                item_id = item.get("id")
+                if item_id and self.validate_uuid(item_id):
+                    incoming_ids.add(item_id)
+                    # Update existing item
+                    conn.execute(
+                        """
+                        UPDATE quote_item 
+                        SET line_no = %s, name_snapshot = %s, volume_l = %s,
+                            purchase_price = %s, rrc_min = %s, sale_price = %s, qty = %s,
+                            updated_at = now()
+                        WHERE id = %s AND quote_document_id = %s
+                        """,
+                        (
+                            i + 1,
+                            item.get("name") or item.get("raw_name") or "Unknown item",
+                            item.get("volume_l"),
+                            item.get("purchase_price"),
+                            item.get("rrc_min"),
+                            item.get("sale_price"),
+                            item.get("qty", 1),
+                            item_id,
+                            quote_id,
+                        )
                     )
+                else:
+                    # Insert new item (no id from backend — manually added item)
+                    conn.execute(
+                        """
+                        INSERT INTO quote_item (quote_document_id, line_no, name_snapshot, volume_l, purchase_price, rrc_min, sale_price, qty)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            quote_id,
+                            i + 1,
+                            item.get("name") or item.get("raw_name") or "Unknown item",
+                            item.get("volume_l"),
+                            item.get("purchase_price"),
+                            item.get("rrc_min"),
+                            item.get("sale_price"),
+                            item.get("qty", 1),
+                        )
+                    )
+
+            # Delete items that were removed by the user
+            if incoming_ids:
+                conn.execute(
+                    "DELETE FROM quote_item WHERE quote_document_id = %s AND id != ALL(%s)",
+                    (quote_id, list(incoming_ids))
                 )
-            
+            elif not items:
+                conn.execute("DELETE FROM quote_item WHERE quote_document_id = %s", (quote_id,))
+
+            # Re-read to get fresh data
+            row = conn.execute("select * from quote_document where id = %s", (quote_id,)).fetchone()
             updated_quote = self.serialize_quote(conn, row)
             
         return self.respond_json({"item": updated_quote})

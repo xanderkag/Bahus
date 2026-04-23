@@ -101,6 +101,16 @@ export function createActions(store, backend = null) {
     store.setState(updater);
   }
 
+  // Debounced auto-save: any quote item edit schedules a save after 2s
+  let autoSaveTimer = null;
+  function scheduleAutoSave() {
+    if (!backend) return;
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(() => {
+      store.actions.saveQuoteDraft();
+    }, 2000);
+  }
+
   function setResourceState(resource, patch) {
     update((state) => ({
       ...state,
@@ -2202,6 +2212,7 @@ export function createActions(store, backend = null) {
           },
         });
       });
+      scheduleAutoSave();
     },
     clearQuote() {
       update((state) => syncSelectedQuoteRecord({
@@ -2270,6 +2281,7 @@ export function createActions(store, backend = null) {
         .map((id) => currentState.quote.itemsById[id])
         .filter(Boolean)
         .map((item) => ({
+          id: item.id,
           source_product_id: item.source_product_id,
           name: item.name,
           qty: item.qty,
@@ -2470,9 +2482,11 @@ export function createActions(store, backend = null) {
     },
     setQuoteItemQty({ itemId }, value) {
       update((state) => withQuoteItem(state, itemId, (item) => ({ ...item, qty: Math.max(1, asNumber(value, 1)) })));
+      scheduleAutoSave();
     },
     setQuoteItemSale({ itemId }, value) {
       update((state) => withQuoteItem(state, itemId, (item) => ({ ...item, sale_price: Math.max(0, asNumber(value, 0)) })));
+      scheduleAutoSave();
     },
     setQuoteColumnWidth({ columnKey }, value) {
       const nextWidth = Math.max(64, Math.round(Number(value) || 0));
@@ -2518,6 +2532,7 @@ export function createActions(store, backend = null) {
                 : item.sale_price,
         }));
       });
+      scheduleAutoSave();
     },
     setQuoteMeta({ field }, value) {
       update((state) => syncSelectedQuoteRecord({
@@ -2868,15 +2883,18 @@ export function createActions(store, backend = null) {
       }
     },
 
-    downloadQuoteExcel() {
+    async downloadQuoteExcel() {
       const state = store.getState();
       const quoteId = state.ui.selectedQuoteId;
       if (!quoteId) return;
       
-      // Save quote first to ensure backend has the latest data (like photos)
-      store.dispatch("syncSelectedQuoteRecord", state).then(() => {
-        window.open(`/api/quotes/${quoteId}/export/excel`, "_blank");
-      });
+      // Save quote first to ensure backend has the latest data
+      try {
+        await store.actions.saveQuoteDraft();
+      } catch (e) {
+        console.warn("Could not save before export", e);
+      }
+      window.open(`/api/quotes/${quoteId}/export/excel`, "_blank");
     },
 
     openLinkImportModal() {
@@ -3005,6 +3023,7 @@ export function createActions(store, backend = null) {
         });
         return { ...state, quote: { ...state.quote, itemsById: nextItemsById } };
       });
+      scheduleAutoSave();
     },
 
     openCustomMarkupModal() {

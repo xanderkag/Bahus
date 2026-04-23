@@ -371,7 +371,7 @@ function renderQuoteTable(state) {
   }
 
   return items
-    .map((item) => {
+    .map((item, index) => {
       const alternatives = findAlternatives(state, item.id);
       const marginClass =
         typeof item.marginRub === "number" && item.marginRub < 0 ? "pill-bad" : "pill-good";
@@ -384,7 +384,7 @@ function renderQuoteTable(state) {
       return `
         <tr>
           <td><span class="pill">${alternatives.length}</span></td>
-          <td>${item.row_index}</td>
+          <td>${index + 1}</td>
           <td>
             <div class="table-title">${escapeHtml(formatValue(item.name))}</div>
             <div class="table-subtitle">${escapeHtml(formatValue(item.normalized_name))} · ${escapeHtml(formatValue(item.country))} · ${escapeHtml(formatValue(item.category))}</div>
@@ -687,6 +687,7 @@ function renderLinkImportModal(state) {
                     <th>Поставщик</th>
                     <th>Дата</th>
                     <th>Позиций</th>
+                    <th>Статус</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -696,17 +697,22 @@ function renderLinkImportModal(state) {
                     const supplierName = state.entities.suppliersById?.[imp.supplier_id]?.name || "—";
                     const total = imp.product_ids?.length ?? 0;
                     const date = imp.meta?.import_date || "—";
+                    const statusClass = imp.status === "done" ? "status-pill-good"
+                      : imp.status === "failed" ? "status-pill-bad"
+                      : imp.status === "processing" ? "status-pill-warn" : "";
                     return `
                       <tr>
                         <td><div class="table-title" style="font-size:12px;">${escapeHtml(fileName)}</div></td>
                         <td>${escapeHtml(supplierName)}</td>
                         <td style="color:var(--muted);font-size:12px;">${escapeHtml(date)}</td>
                         <td><span class="pill" style="font-size:11px;">${total}</span></td>
+                        <td><span class="status-pill ${statusClass}" style="font-size:11px;">${escapeHtml(formatImportStatus(imp.status))}</span></td>
                         <td>
                           <button class="toolbar-btn toolbar-btn-primary"
                             data-action="linkImportToQuote"
                             data-import-id="${imp.id}"
-                            title="Привязать этот файл к текущему КП">
+                            ${imp.status !== "done" ? "disabled" : ""}
+                            title="${imp.status !== "done" ? "Файл ещё обрабатывается" : "Привязать этот файл к текущему КП"}">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
                             <span>Привязать</span>
                           </button>
