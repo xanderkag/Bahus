@@ -51,16 +51,35 @@ function renderMetaRows(currentImport, supplier, compact = true) {
 
 const importSearchIndexCache = new WeakMap();
 
-// Returns a map of importId -> { checked, total } for all loaded products
 function getImportConfirmStats(state) {
   const stats = {};
-  const products = Object.values(state.entities.productsById || {});
-  for (const p of products) {
-    if (!p.import_id) continue;
-    if (!stats[p.import_id]) stats[p.import_id] = { checked: 0, total: 0 };
-    stats[p.import_id].total++;
-    if (p.review_status === "checked") stats[p.import_id].checked++;
+  
+  // 1. Initialize from backend imports data
+  const imports = Object.values(state.entities.importsById || {});
+  for (const imp of imports) {
+    if (imp.row_count > 0) {
+      stats[imp.id] = { 
+        checked: imp.checked_count || 0, 
+        total: imp.row_count 
+      };
+    }
   }
+
+  // 2. Override with locally loaded products to reflect immediate unsaved UI changes
+  const products = Object.values(state.entities.productsById || {});
+  if (products.length > 0) {
+    const localStats = {};
+    for (const p of products) {
+      if (!p.import_id) continue;
+      if (!localStats[p.import_id]) localStats[p.import_id] = { checked: 0, total: 0 };
+      localStats[p.import_id].total++;
+      if (p.review_status === "checked") localStats[p.import_id].checked++;
+    }
+    for (const importId in localStats) {
+      stats[importId] = localStats[importId];
+    }
+  }
+  
   return stats;
 }
 

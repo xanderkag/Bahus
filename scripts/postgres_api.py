@@ -650,11 +650,18 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
     def serialize_import(self, conn, batch_row: dict) -> dict:
         import_id = str(batch_row["id"])
         files = self.load_import_files(conn, import_id)
-        # Шаг 5: COUNT вместо загрузки всех строк — намного дешевле при листинге
-        row_count = conn.execute(
-            "select count(*) as cnt from import_row where import_batch_id = %s",
+        stats = conn.execute(
+            """
+            select 
+                count(*) as cnt,
+                count(case when review_status = 'checked' then 1 end) as checked_cnt
+            from import_row 
+            where import_batch_id = %s
+            """,
             (import_id,)
-        ).fetchone()["cnt"]
+        ).fetchone()
+        row_count = stats["cnt"]
+        checked_count = stats["checked_cnt"]
         issues = self.load_import_issues(conn, import_id)
         price_file = next((item for item in files if item["file_kind"] == "price"), files[0] if files else None)
         attachments = [item for item in files if item["file_kind"] != "price"]
@@ -701,6 +708,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             "processing_status": derived_status,
             "status": derived_status,
             "row_count": row_count,
+            "checked_count": checked_count,
             "errors": [
                 {
                     "row_index": issue["row_index"],
