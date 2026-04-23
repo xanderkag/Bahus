@@ -2279,6 +2279,10 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             )
             '''
         )
+        try:
+            conn.execute("ALTER TABLE quote_document ADD COLUMN IF NOT EXISTS request_title TEXT")
+        except Exception as e:
+            pass
         conn.commit()
 
     def serialize_quote(self, conn, row) -> dict:
