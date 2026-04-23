@@ -128,6 +128,12 @@ export const PRODUCT_COLUMN_DEFS = {
   },
   "review_status": {
     renderTh: (renderHeader, renderMenu) => `<th class="filterable-th">${renderHeader("Проверка", "review_status")}${renderMenu("review_status")}</th>`,
-    renderTd: (product) => `<td><span class="pill">${escapeHtml(formatReviewStatus(product.review_status))}</span></td>`
+    renderTd: (product) => {
+      let pillClass = "pill";
+      if (product.review_status === "checked") pillClass += " pill-success";
+      else if (product.review_status === "excluded") pillClass += " pill-danger";
+      else pillClass += " pill-warn";
+      return `<td><span class="${pillClass}">${escapeHtml(formatReviewStatus(product.review_status))}</span></td>`;
+    }
   }
 };

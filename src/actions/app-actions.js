@@ -1297,6 +1297,9 @@ export function createActions(store, backend = null) {
     },
     toggleRowSelection({ productId }) {
       update((state) => {
+        const product = state.entities.productsById[productId];
+        if (product && product.review_status === "checked") return state; // disable toggling checked rows
+
         const selected = new Set(state.ui.selectedRowIds);
         if (selected.has(productId)) selected.delete(productId);
         else selected.add(productId);
@@ -1311,7 +1314,11 @@ export function createActions(store, backend = null) {
         ...state,
         ui: {
           ...state.ui,
-          selectedRowIds: unique(getVisibleProducts(state).map((product) => product.id)),
+          selectedRowIds: unique(
+            getVisibleProducts(state)
+              .filter(p => p.review_status !== "checked")
+              .map((product) => product.id)
+          ),
         },
       }));
     },

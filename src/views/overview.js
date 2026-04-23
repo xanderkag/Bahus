@@ -543,12 +543,14 @@ function renderProductsTable(state) {
 
       return `
         <tr class="${selectedRows.has(product.id) ? "is-selected" : ""}" data-dblaction="openRowDetails" data-product-id="${product.id}">
-          <td>
-            <input
-              type="checkbox"
+          <td class="checkbox-col">
+            <input 
+              type="checkbox" 
+              class="checkbox"
               data-change="toggleRowSelection"
               data-product-id="${product.id}"
-              ${selectedRows.has(product.id) ? "checked" : ""}
+              ${state.ui.selectedRowIds.includes(product.id) ? "checked" : ""}
+              ${product.review_status === "checked" ? "disabled title='Уже подтверждено'" : ""}
             />
           </td>
           ${state.ui.overviewTableColumns
