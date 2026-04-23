@@ -742,6 +742,20 @@ function renderCustomMarkupModal(state) {
   `;
 }
 
+function renderProcessingModal(state) {
+  if (state.ui.modal !== "processing") return "";
+  return `
+    <div class="modal-overlay" style="z-index:9999;">
+      <div class="app-dialog" style="width:min(400px,94vw);text-align:center;padding:40px 20px;">
+        <div class="spinner" style="margin: 0 auto 20px;width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;"></div>
+        <h3>Синхронизация</h3>
+        <p style="color:var(--muted);margin-top:8px;">Подождите, идёт привязка позиций...</p>
+      </div>
+    </div>
+    <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+  `;
+}
+
 export function renderQuote(state) {
   const summary = getQuoteSummary(state);
   const meta = getQuoteMeta(state);
@@ -845,6 +859,7 @@ export function renderQuote(state) {
       ${renderQuotePreviewModal(state)}
       ${renderLinkImportModal(state)}
       ${renderCustomMarkupModal(state)}
+      ${renderProcessingModal(state)}
     </section>
   `;
 }

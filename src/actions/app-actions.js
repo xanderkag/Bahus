@@ -2909,10 +2909,10 @@ export function createActions(store, backend = null) {
       const quoteId = state.ui.selectedQuoteId;
       if (!quoteId || !importId) return;
 
-      // Close modal optimistically
+      // Show processing modal instead of closing immediately
       update((s) => ({
         ...s,
-        ui: { ...s.ui, modal: null },
+        ui: { ...s.ui, modal: "processing" },
       }));
 
       if (backend) {
@@ -2930,6 +2930,7 @@ export function createActions(store, backend = null) {
               const hydrated = hydrateQuoteFromRecord(s, updatedRecord);
               return {
                 ...hydrated,
+                ui: { ...hydrated.ui, modal: null },
                 entities: {
                   ...hydrated.entities,
                   quotesById: {
@@ -2942,7 +2943,10 @@ export function createActions(store, backend = null) {
           }
         } catch (err) {
           console.error("Failed to link import to quote", err);
+          update((s) => ({ ...s, ui: { ...s.ui, modal: null } }));
         }
+      } else {
+        update((s) => ({ ...s, ui: { ...s.ui, modal: null } }));
       }
     },
 
@@ -2951,9 +2955,10 @@ export function createActions(store, backend = null) {
       const quoteId = state.ui.selectedQuoteId;
       if (!quoteId || !importId) return;
 
-      // Optimistic: remove from linkedImportIds immediately
+      // Show processing modal and optimistically update
       update((s) => ({
         ...s,
+        ui: { ...s.ui, modal: "processing" },
         quote: {
           ...s.quote,
           meta: {
@@ -2978,6 +2983,7 @@ export function createActions(store, backend = null) {
               const hydrated = hydrateQuoteFromRecord(s, updatedRecord);
               return {
                 ...hydrated,
+                ui: { ...hydrated.ui, modal: null },
                 entities: {
                   ...hydrated.entities,
                   quotesById: {
@@ -2993,6 +2999,7 @@ export function createActions(store, backend = null) {
           // Rollback
           update((s) => ({
             ...s,
+            ui: { ...s.ui, modal: null },
             quote: {
               ...s.quote,
               meta: {
@@ -3002,6 +3009,8 @@ export function createActions(store, backend = null) {
             },
           }));
         }
+      } else {
+        update((s) => ({ ...s, ui: { ...s.ui, modal: null } }));
       }
     },
 
