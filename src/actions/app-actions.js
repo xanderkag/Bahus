@@ -2887,14 +2887,41 @@ export function createActions(store, backend = null) {
       const state = store.getState();
       const quoteId = state.ui.selectedQuoteId;
       if (!quoteId) return;
-      
+
+      // Show processing indicator
+      update((s) => ({
+        ...s,
+        ui: {
+          ...s.ui,
+          modal: "processing",
+          processingMessage: { title: "Формирование Excel", text: "Подождите, генерируем файл..." },
+        },
+      }));
+
       // Save quote first to ensure backend has the latest data
       try {
         await store.actions.saveQuoteDraft();
       } catch (e) {
         console.warn("Could not save before export", e);
       }
-      window.open(`/api/quotes/${quoteId}/export/excel`, "_blank");
+
+      try {
+        const response = await fetch(`/api/quotes/${quoteId}/export/excel`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `КП-${quoteId}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error("Excel export failed", err);
+      } finally {
+        update((s) => ({ ...s, ui: { ...s.ui, modal: null, processingMessage: null } }));
+      }
     },
 
     openLinkImportModal() {
@@ -2912,7 +2939,7 @@ export function createActions(store, backend = null) {
       // Show processing modal instead of closing immediately
       update((s) => ({
         ...s,
-        ui: { ...s.ui, modal: "processing" },
+        ui: { ...s.ui, modal: "processing", processingMessage: { title: "Привязка файла", text: "Подождите, идёт привязка позиций..." } },
       }));
 
       if (backend) {
@@ -2958,7 +2985,7 @@ export function createActions(store, backend = null) {
       // Show processing modal and optimistically update
       update((s) => ({
         ...s,
-        ui: { ...s.ui, modal: "processing" },
+        ui: { ...s.ui, modal: "processing", processingMessage: { title: "Отвязка файла", text: "Подождите, идёт удаление привязки..." } },
         quote: {
           ...s.quote,
           meta: {
