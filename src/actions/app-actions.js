@@ -493,6 +493,14 @@ export function createActions(store, backend = null) {
           qty: 1,
           alternative_open: false,
           selected_alternative_id: null,
+          line_snapshot_payload: {
+            image_url: product.image_url || 
+                       product.images?.[0]?.url || 
+                       product.images?.[0]?.src || 
+                       product.manual_match_result?.images?.[0]?.url || 
+                       product.manual_match_result?.images?.[0]?.src || 
+                       null
+          }
         };
         nextOrder.push(itemId);
       });
@@ -2210,6 +2218,7 @@ export function createActions(store, backend = null) {
           purchase_price: item.purchase_price,
           sale_price: item.sale_price,
           supplier_id: item.supplier_id,
+          line_snapshot_payload: item.line_snapshot_payload,
         }));
 
       const payload = {
@@ -2801,59 +2810,13 @@ export function createActions(store, backend = null) {
 
     downloadQuoteExcel() {
       const state = store.getState();
-      const meta = state.quote.meta || {};
       const quoteId = state.ui.selectedQuoteId;
       if (!quoteId) return;
-
-      const items = (state.runtime?.resources?.quoteDraft?.data?.items || [])
-        .map(i => state.entities.productsById[i.source_product_id] || i);
-
-      // We actually want the enriched items that are shown in the table
-      const enrichedItems = enrichQuoteItems(state);
-      const summary = getQuoteSummary(state);
       
-      if (!enrichedItems || enrichedItems.length === 0) {
-        alert("В КП нет позиций для скачивания.");
-        return;
-      }
-
-      const rows = enrichedItems.map((item, idx) => ({
-        "№": idx + 1,
-        "Позиция": item.name || "",
-        "Объём (л)": item.volume_l || "",
-        "Кол-во": item.qty || 0,
-        "Цена (руб)": item.sale_price || 0,
-        "Сумма (руб)": item.lineSum || 0,
-      }));
-
-      rows.push({}); // Empty row
-      rows.push({
-        "№": "",
-        "Позиция": "ИТОГО",
-        "Объём (л)": "",
-        "Кол-во": summary.qty,
-        "Цена (руб)": "",
-        "Сумма (руб)": summary.sale,
+      // Save quote first to ensure backend has the latest data (like photos)
+      store.dispatch("syncSelectedQuoteRecord", state).then(() => {
+        window.open(`/api/quotes/${quoteId}/export/excel`, "_blank");
       });
-
-      const ws = XLSX.utils.json_to_sheet(rows);
-
-      // Add column widths
-      ws["!cols"] = [
-        { wch: 5 },  // №
-        { wch: 50 }, // Позиция
-        { wch: 10 }, // Объём
-        { wch: 10 }, // Кол-во
-        { wch: 15 }, // Цена
-        { wch: 15 }, // Сумма
-      ];
-
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Коммерческое предложение");
-
-      const safeDate = (meta.quoteDate || new Date().toISOString().split("T")[0]);
-      const safeNumber = (meta.quoteNumber || "Новое").replace(/[^a-zA-Z0-9А-Яа-я-]/g, "_");
-      XLSX.writeFile(wb, `${safeNumber}_${safeDate}.xlsx`);
     },
 
   };

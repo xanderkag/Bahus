@@ -21,6 +21,15 @@ from urllib.parse import parse_qs, urlparse
 from uuid import UUID
 
 import requests
+import io
+try:
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.drawing.image import Image as OpenpyxlImage
+    from PIL import Image as PillowImage
+except ImportError:
+    openpyxl = None
+    PillowImage = None
 
 log_dir = Path(__file__).resolve().parent.parent / ".local" / "logs"
 log_dir.mkdir(parents=True, exist_ok=True)
@@ -225,6 +234,8 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             return self.handle_list_quotes()
         if route.startswith("/api/quotes/") and len(route.split("/")) == 4:
             return self.handle_get_quote(route.split("/")[3])
+        if route.startswith("/api/quotes/") and route.endswith("/export/excel"):
+            return self.handle_export_quote_excel(route.split("/")[3])
         if route == "/api/debug/jobs":
             return self.handle_debug_jobs()
 
@@ -2087,7 +2098,8 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
               purchase_price,
               rrc_min,
               sale_price,
-              qty
+              qty,
+              line_snapshot_payload
             from quote_item
             where quote_document_id = %s
             order by line_no asc
@@ -2137,6 +2149,84 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 return self.respond_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
             quote = self.serialize_quote(conn, row)
         return self.respond_json({"item": quote})
+
+    def handle_export_quote_excel(self, quote_id: str) -> None:
+        if not openpyxl:
+            return self.respond_json({"error": "openpyxl not installed on backend"}, status=HTTPStatus.NOT_IMPLEMENTED)
+            
+        if not self.validate_uuid(quote_id):
+            return self.respond_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
+            
+        with self.db() as conn:
+            row = conn.execute("select * from quote_document where id = %s", (quote_id,)).fetchone()
+            if not row:
+                return self.respond_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
+            quote = self.serialize_quote(conn, row)
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Коммерческое предложение"
+        
+        headers = ["№", "Фото", "Позиция", "Объём (л)", "Кол-во", "Цена (руб)", "Сумма (руб)"]
+        for col, h in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=h)
+            cell.font = Font(bold=True)
+            ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width = 15
+        
+        ws.column_dimensions["B"].width = 12
+        ws.column_dimensions["C"].width = 40
+            
+        current_row = 2
+        for idx, item in enumerate(quote["items"], 1):
+            qty = Decimal(item.get("qty") or 0)
+            price = Decimal(item.get("sale_price") or 0)
+            line_sum = qty * price
+            
+            ws.row_dimensions[current_row].height = 60
+            
+            ws.cell(row=current_row, column=1, value=idx).alignment = Alignment(vertical="center")
+            ws.cell(row=current_row, column=3, value=item.get("name") or "").alignment = Alignment(vertical="center", wrap_text=True)
+            ws.cell(row=current_row, column=4, value=item.get("volume_l") or "").alignment = Alignment(vertical="center")
+            ws.cell(row=current_row, column=5, value=float(qty)).alignment = Alignment(vertical="center")
+            ws.cell(row=current_row, column=6, value=float(price)).alignment = Alignment(vertical="center")
+            ws.cell(row=current_row, column=7, value=float(line_sum)).alignment = Alignment(vertical="center")
+            
+            payload = item.get("line_snapshot_payload", {})
+            image_url = payload.get("image_url") if isinstance(payload, dict) else None
+            
+            if image_url:
+                try:
+                    resp = requests.get(image_url, timeout=5)
+                    if resp.status_code == 200:
+                        img = PillowImage.open(io.BytesIO(resp.content))
+                        img.thumbnail((80, 80))
+                        
+                        img_io = io.BytesIO()
+                        img.save(img_io, format="PNG")
+                        img_io.seek(0)
+                        
+                        xl_img = OpenpyxlImage(img_io)
+                        # Center roughly
+                        ws.add_image(xl_img, f"B{current_row}")
+                except Exception as e:
+                    logger.error(f"Failed to load image {image_url} for quote {quote_id}: {e}")
+            
+            current_row += 1
+
+        # Summary row
+        ws.cell(row=current_row+1, column=3, value="ИТОГО").font = Font(bold=True)
+        ws.cell(row=current_row+1, column=5, value=f"=SUM(E2:E{current_row-1})").font = Font(bold=True)
+        ws.cell(row=current_row+1, column=7, value=f"=SUM(G2:G{current_row-1})").font = Font(bold=True)
+
+        out = io.BytesIO()
+        wb.save(out)
+        out.seek(0)
+        
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        self.send_header("Content-Disposition", f'attachment; filename="quote_{quote_id[:8]}.xlsx"')
+        self.end_headers()
+        self.wfile.write(out.read())
 
     def handle_create_quote(self) -> None:
         content_type = self.headers.get("Content-Type", "")
