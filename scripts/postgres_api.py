@@ -924,7 +924,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         return self.respond_json({"item": status})
 
     def handle_review_rows(self) -> None:
-        payload = self.read_json()
+        payload = self.read_json_body()
         updates = payload.get("updates", [])
         if not updates:
             return self.respond_json({"status": "ok", "updated": 0})

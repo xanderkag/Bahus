@@ -2092,7 +2092,9 @@ export function createActions(store, backend = null) {
               excluded: false,
             })),
           });
-        } catch {}
+        } catch (err) {
+          console.error("[markSelectedChecked] Failed to persist review_status to backend:", err);
+        }
       }
     },
     async excludeSelectedRows() {
