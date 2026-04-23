@@ -637,11 +637,11 @@ function renderDetailProperties(state, product, currentImport, isEditing = false
   const fields = [
     { label: "Наименование в прайсе", value: product.raw_name, editable: false },
     { label: "Разобранное имя", value: product.normalized_name, field: "manual_normalized_name", editable: true, kind: "text" },
-    { label: "Категория", value: product.category, field: "category", editable: false },
-    { label: "Страна", value: product.country, field: "country", editable: false },
-    { label: "Объём (л)", value: product.volume_l, field: "volume_l", editable: false, kind: "number" },
-    { label: "Закупочная цена", value: product.purchase_price, editable: false, kind: "number" },
-    { label: "РРЦ", value: product.rrc_min, editable: false, kind: "number" },
+    { label: "Категория", value: product.category, field: "category", editable: true, kind: "text" },
+    { label: "Страна", value: product.country, field: "country", editable: true, kind: "text" },
+    { label: "Объём (л)", value: product.volume_l, field: "volume_l", editable: true, kind: "number" },
+    { label: "Закупочная цена", value: product.purchase_price, field: "purchase_price", editable: true, kind: "number" },
+    { label: "РРЦ", value: product.rrc_min, field: "rrc_min", editable: true, kind: "number" },
     {
       label: "Статус проверки",
       value: product.review_status,
@@ -700,18 +700,19 @@ function renderRowDetailModal(state) {
   const currentImport = getCurrentImport(state);
   const supplier = getCurrentSupplier(state);
   const isEditing = Boolean(state.ui.rowDetailEditMode);
+  const isChecked = product.review_status === "checked";
 
   return `
-    <div class="modal-overlay">
-      <div class="app-dialog row-detail-dialog clean-dialog">
-        <div class="dialog-header row-detail-dialog-header">
+    <div class="modal-overlay" data-action="closeModal" id="row-detail-overlay">
+      <div class="app-dialog row-detail-dialog clean-dialog" data-stop-propagation="true">
+        <div class="row-detail-dialog-header">
           <div class="row-detail-heading">
-            <span class="eyebrow">${escapeHtml(formatValue(supplier?.name))} · Строка ${product.row_index}</span>
+            <span class="eyebrow">${escapeHtml(formatValue(supplier?.name))} · Строка ${product.row_index}${isChecked ? ' · <span class="detail-checked-badge">✓ Подтверждено</span>' : ''}</span>
             <h3>${escapeHtml(formatValue(product.normalized_name || product.raw_name))}</h3>
           </div>
           <div class="toolbar-actions row-detail-header-actions">
-            <button class="ghost-btn" data-action="toggleRowDetailEditMode">${isEditing ? "Готово" : "Редактировать"}</button>
-            <button class="ghost-btn" data-action="closeModal" aria-label="Закрыть">Закрыть</button>
+            ${!isChecked ? `<button class="ghost-btn" data-action="toggleRowDetailEditMode">${isEditing ? "Готово" : "Редактировать"}</button>` : ''}
+            <button class="ghost-btn icon-btn" data-action="closeModal" aria-label="Закрыть" style="font-size:18px;padding:4px 10px;">×</button>
           </div>
         </div>
         
@@ -721,7 +722,7 @@ function renderRowDetailModal(state) {
             <div class="clean-card-header">
               <h3>Параметры позиции</h3>
             </div>
-            ${renderDetailProperties(state, product, currentImport, isEditing)}
+            ${renderDetailProperties(state, product, currentImport, isEditing && !isChecked)}
           </section>
 
           <!-- Правая колонка: Фото и каталог -->
@@ -922,28 +923,43 @@ export function renderOverview(state) {
 
       <article class="panel overview-products-panel">
         ${
-          currentImport && ["queued", "pending", "processing"].includes(currentImport.status)
-            ? `
-              <div class="import-processing-banner">
-                <div class="boot-loader" style="width:16px;height:16px;border-width:2px;flex-shrink:0;"></div>
-                <div class="import-processing-banner-copy">
-                  <strong>Файл передан на обработку</strong>
-                  <span>ИИ анализирует прайс-лист. Данные появятся автоматически — можно не ждать у экрана.</span>
+          (() => {
+            const cs = currentImport ? (getImportConfirmStats(state)[currentImport.id] || { checked: 0, total: 0 }) : null;
+            const importAllDone = cs && cs.total > 0 && cs.checked === cs.total;
+            if (currentImport && ["queued", "pending", "processing"].includes(currentImport.status)) {
+              return `
+                <div class="import-processing-banner">
+                  <div class="boot-loader" style="width:16px;height:16px;border-width:2px;flex-shrink:0;"></div>
+                  <div class="import-processing-banner-copy">
+                    <strong>Файл передан на обработку</strong>
+                    <span>ИИ анализирует прайс-лист. Данные появятся автоматически — можно не ждать у экрана.</span>
+                  </div>
                 </div>
-              </div>
-            `
-            : currentImport && currentImport.status === "failed"
-            ? `
-              <div class="import-error-banner">
-                <div class="import-error-banner-icon">⚠</div>
-                <div class="import-error-banner-copy">
-                  <strong>Обработка завершилась с ошибкой</strong>
-                  <span>${escapeHtml(currentImport.meta?.last_error || "Неизвестная ошибка. Попробуйте загрузить файл повторно.")}</span>
+              `;
+            } else if (currentImport && currentImport.status === "failed") {
+              return `
+                <div class="import-error-banner">
+                  <div class="import-error-banner-icon">⚠</div>
+                  <div class="import-error-banner-copy">
+                    <strong>Обработка завершилась с ошибкой</strong>
+                    <span>${escapeHtml(currentImport.meta?.last_error || "Неизвестная ошибка. Попробуйте загрузить файл повторно.")}</span>
+                  </div>
+                  <button class="ghost-btn compact-action-btn" data-action="retryImportDispatch" data-id="${escapeHtml(currentImport.id)}" style="flex-shrink:0;white-space:nowrap;">Повторить</button>
                 </div>
-                <button class="ghost-btn compact-action-btn" data-action="retryImportDispatch" data-id="${escapeHtml(currentImport.id)}" style="flex-shrink:0;white-space:nowrap;">Повторить</button>
-              </div>
-            `
-            : ""
+              `;
+            } else if (importAllDone) {
+              return `
+                <div class="import-confirmed-banner">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>
+                  <div class="import-confirmed-banner-copy">
+                    <strong>Все позиции подтверждены</strong>
+                    <span>Файл полностью проверен и закрыт для редактирования. Позиции доступны только для просмотра.</span>
+                  </div>
+                </div>
+              `;
+            }
+            return '';
+          })()
         }
         <div class="panel-header overview-panel-header">
           <div class="overview-panel-headline">

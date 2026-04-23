@@ -321,6 +321,18 @@ async function main() {
     if (!event.target.closest(".client-picker") && store.getState().ui.clientPickerOpen) {
       actions.closeClientPicker();
     }
+    // Close modal when clicking the overlay backdrop (not the dialog itself)
+    if (event.target.closest("[data-stop-propagation]")) return;
+    if (event.target.matches(".modal-overlay[data-action='closeModal']") || event.target === event.target.closest(".modal-overlay[data-action='closeModal']") && !event.target.closest(".app-dialog")) {
+      const state = store.getState();
+      if (state.ui.modal) actions.closeModal();
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      const state = store.getState();
+      if (state.ui.modal) actions.closeModal();
+    }
   });
   root.addEventListener("input", handlers.input);
   root.addEventListener("change", handlers.change);
