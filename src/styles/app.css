@@ -3043,6 +3043,45 @@ tbody tr.is-selected {
 }
 
 /* =========================================================================
+   Import confirmation progress — shown in the files table Подтверждено column
+   ========================================================================= */
+
+.import-confirm-progress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 80px;
+}
+
+.import-confirm-bar {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--line, rgba(86,113,166,.15));
+  overflow: hidden;
+}
+
+.import-confirm-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent, #6366f1);
+  transition: width 0.3s ease;
+}
+
+.import-confirm-fill-done {
+  background: #22c55e;
+}
+
+.import-confirm-label {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2, #888);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+
+/* =========================================================================
    Processing banner — shown above products panel while n8n is working
    ========================================================================= */
 
