@@ -657,7 +657,7 @@ function linkedImports_list(allImports, linkedImportIds) {
 }
 
 function formatImportStatus(status) {
-  const labels = { done: "Готово", failed: "Ошибка", processing: "Обработка", pending: "Ожидание", queued: "Очередь" };
+  const labels = { done: "Готово", parsed: "Разобран", failed: "Ошибка", processing: "Обработка", pending: "Ожидание", queued: "Очередь" };
   return labels[status] || status || "—";
 }
 
@@ -697,9 +697,10 @@ function renderLinkImportModal(state) {
                     const supplierName = state.entities.suppliersById?.[imp.supplier_id]?.name || "—";
                     const total = imp.product_ids?.length ?? 0;
                     const date = imp.meta?.import_date || "—";
-                    const statusClass = imp.status === "done" ? "status-pill-good"
+                    const statusClass = (imp.status === "done" || imp.status === "parsed") ? "status-pill-good"
                       : imp.status === "failed" ? "status-pill-bad"
                       : imp.status === "processing" ? "status-pill-warn" : "";
+                    const isReady = imp.status === "done" || imp.status === "parsed";
                     return `
                       <tr>
                         <td><div class="table-title" style="font-size:12px;">${escapeHtml(fileName)}</div></td>
@@ -711,8 +712,8 @@ function renderLinkImportModal(state) {
                           <button class="toolbar-btn toolbar-btn-primary"
                             data-action="linkImportToQuote"
                             data-import-id="${imp.id}"
-                            ${imp.status !== "done" ? "disabled" : ""}
-                            title="${imp.status !== "done" ? "Файл ещё обрабатывается" : "Привязать этот файл к текущему КП"}">
+                            ${!isReady ? "disabled" : ""}
+                            title="${!isReady ? "Файл ещё обрабатывается" : "Привязать этот файл к текущему КП"}">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
                             <span>Привязать</span>
                           </button>
