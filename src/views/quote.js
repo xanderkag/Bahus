@@ -617,8 +617,8 @@ function renderQuoteFilesPanel(state) {
                   const checkedCount = imp.product_ids?.filter(
                     (pid) => state.entities.productsById[pid]?.review_status === "checked"
                   ).length ?? 0;
-                  const total = imp.product_ids?.length ?? 0;
-                  const statusClass = imp.status === "done" ? "status-pill-good"
+                  const total = imp.row_count ?? imp.product_ids?.length ?? 0;
+                  const statusClass = (imp.status === "done" || imp.status === "parsed") ? "status-pill-good"
                     : imp.status === "failed" ? "status-pill-bad"
                     : imp.status === "processing" ? "status-pill-warn" : "";
                   const fileName = imp.meta?.source_file || imp.source || "Файл";
@@ -695,7 +695,7 @@ function renderLinkImportModal(state) {
                   ${unlinked.map((imp) => {
                     const fileName = imp.meta?.source_file || imp.source || "Файл";
                     const supplierName = state.entities.suppliersById?.[imp.supplier_id]?.name || "—";
-                    const total = imp.product_ids?.length ?? 0;
+                    const total = imp.row_count ?? imp.product_ids?.length ?? 0;
                     const date = imp.meta?.import_date || "—";
                     const statusClass = (imp.status === "done" || imp.status === "parsed") ? "status-pill-good"
                       : imp.status === "failed" ? "status-pill-bad"
