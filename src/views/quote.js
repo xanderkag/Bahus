@@ -563,7 +563,189 @@ function renderPreview(state) {
   `;
 }
 
+function renderQuoteFilesPanel(state) {
+  const quoteId = state.ui.selectedQuoteId;
+  const linkedImportIds = state.quote?.meta?.linkedImportIds || [];
+  const allImports = state.entities?.importOrder?.map((id) => state.entities.importsById[id]).filter(Boolean) || [];
+  const linkedImports = linkedImports_list(allImports, linkedImportIds);
+  const unlinkedImports = allImports.filter((imp) => !linkedImportIds.includes(imp.id));
+
+  if (!quoteId) {
+    return `
+      <article class="panel quote-files-panel">
+        <div class="panel-header">
+          <div><h2>Файлы поставщиков</h2><p>Выберите КП для просмотра файлов.</p></div>
+        </div>
+        <div class="quote-files-empty">Выберите КП в списке слева</div>
+      </article>
+    `;
+  }
+
+  return `
+    <article class="panel quote-files-panel">
+      <div class="panel-header">
+        <div>
+          <h2>Файлы поставщиков</h2>
+          <p>Прайс-листы привязанные к этому КП.</p>
+        </div>
+        <div class="toolbar-actions">
+          <button class="toolbar-btn toolbar-btn-primary" data-action="openLinkImportModal"
+            ${unlinkedImports.length === 0 ? "disabled" : ""}
+            title="Привязать существующий файл к этому КП">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            <span>Привязать</span>
+          </button>
+        </div>
+      </div>
+      <div class="table-wrap compact-table quote-files-table-wrap" style="flex:1; border:none;">
+        <table>
+          <thead>
+            <tr>
+              <th>Файл / Поставщик</th>
+              <th>Позиций</th>
+              <th>Статус</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${linkedImports.length === 0
+              ? `<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px 0;">Нет привязанных файлов</td></tr>`
+              : linkedImports.map((imp) => {
+                  const checkedCount = imp.product_ids?.filter(
+                    (pid) => state.entities.productsById[pid]?.review_status === "checked"
+                  ).length ?? 0;
+                  const total = imp.product_ids?.length ?? 0;
+                  const statusClass = imp.status === "done" ? "status-pill-good"
+                    : imp.status === "failed" ? "status-pill-bad"
+                    : imp.status === "processing" ? "status-pill-warn" : "";
+                  const fileName = imp.meta?.source_file || imp.source || "Файл";
+                  const supplierName = state.entities.suppliersById?.[imp.supplier_id]?.name || "—";
+                  return `
+                    <tr>
+                      <td>
+                        <div class="table-title" style="font-size:12px;">${escapeHtml(fileName)}</div>
+                        <div class="table-subtitle">${escapeHtml(supplierName)}</div>
+                      </td>
+                      <td>
+                        <span class="pill" style="font-size:11px;">${checkedCount}/${total}</span>
+                      </td>
+                      <td>
+                        <span class="status-pill ${statusClass}" style="font-size:11px;">${escapeHtml(formatImportStatus(imp.status))}</span>
+                      </td>
+                      <td>
+                        <button class="ghost-btn compact-action-btn icon-action-btn"
+                          data-action="unlinkImportFromQuote"
+                          data-import-id="${imp.id}"
+                          title="Отвязать файл от КП">✕</button>
+                      </td>
+                    </tr>
+                  `;
+                }).join("")
+            }
+          </tbody>
+        </table>
+      </div>
+    </article>
+  `;
+}
+
+function linkedImports_list(allImports, linkedImportIds) {
+  return allImports.filter((imp) => linkedImportIds.includes(imp.id));
+}
+
+function formatImportStatus(status) {
+  const labels = { done: "Готово", failed: "Ошибка", processing: "Обработка", pending: "Ожидание", queued: "Очередь" };
+  return labels[status] || status || "—";
+}
+
+function renderLinkImportModal(state) {
+  if (state.ui.modal !== "link-import-to-quote") return "";
+  const linkedImportIds = state.quote?.meta?.linkedImportIds || [];
+  const allImports = state.entities?.importOrder?.map((id) => state.entities.importsById[id]).filter(Boolean) || [];
+  const unlinked = allImports.filter((imp) => !linkedImportIds.includes(imp.id));
+
+  return `
+    <div class="modal-overlay" data-action="closeModal">
+      <div class="app-dialog" data-stop-propagation="true" style="width:min(680px,94vw);max-height:80vh;display:flex;flex-direction:column;">
+        <div class="dialog-header">
+          <div>
+            <h3>Привязать файл к КП</h3>
+            <p>Выберите ранее загруженный прайс-лист поставщика.</p>
+          </div>
+          <button class="ghost-btn" data-action="closeModal">Закрыть</button>
+        </div>
+        <div style="overflow-y:auto;flex:1;padding:0 20px 20px;">
+          ${unlinked.length === 0
+            ? `<div class="empty-block">Все доступные файлы уже привязаны к этому КП.</div>`
+            : `<table>
+                <thead>
+                  <tr>
+                    <th>Файл</th>
+                    <th>Поставщик</th>
+                    <th>Дата</th>
+                    <th>Позиций</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${unlinked.map((imp) => {
+                    const fileName = imp.meta?.source_file || imp.source || "Файл";
+                    const supplierName = state.entities.suppliersById?.[imp.supplier_id]?.name || "—";
+                    const total = imp.product_ids?.length ?? 0;
+                    const date = imp.meta?.import_date || "—";
+                    return `
+                      <tr>
+                        <td><div class="table-title" style="font-size:12px;">${escapeHtml(fileName)}</div></td>
+                        <td>${escapeHtml(supplierName)}</td>
+                        <td style="color:var(--muted);font-size:12px;">${escapeHtml(date)}</td>
+                        <td><span class="pill" style="font-size:11px;">${total}</span></td>
+                        <td>
+                          <button class="toolbar-btn toolbar-btn-primary"
+                            data-action="linkImportToQuote"
+                            data-import-id="${imp.id}"
+                            title="Привязать этот файл к текущему КП">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                            <span>Привязать</span>
+                          </button>
+                        </td>
+                      </tr>
+                    `;
+                  }).join("")}
+                </tbody>
+              </table>`
+          }
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderCustomMarkupModal(state) {
+  if (state.ui.modal !== "custom-markup") return "";
+  return `
+    <div class="modal-overlay" data-action="closeModal">
+      <div class="app-dialog" data-stop-propagation="true" style="width:min(360px,94vw);">
+        <div class="dialog-header">
+          <div><h3>Произвольная наценка</h3></div>
+          <button class="ghost-btn" data-action="closeModal">✕</button>
+        </div>
+        <div style="padding:16px 20px 20px;display:grid;gap:12px;">
+          <label style="display:grid;gap:6px;font-size:13px;">
+            Наценка, %
+            <input id="custom-markup-input" class="input" type="number" min="1" max="1000" placeholder="Например: 35" style="font-size:16px;" />
+          </label>
+          <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button class="ghost-btn" data-action="closeModal">Отмена</button>
+            <button class="toolbar-btn toolbar-btn-accent" data-action="applyCustomMarkup">Применить</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 export function renderQuote(state) {
+
   const summary = getQuoteSummary(state);
   const meta = getQuoteMeta(state);
   const alerts = getQuoteAlerts(state);
@@ -579,118 +761,102 @@ export function renderQuote(state) {
 
   return `
     <section class="view-stack quote-workspace">
-      <article class="panel quote-list-panel">
-        <div class="panel-header quote-panel-header">
-          <div class="quote-panel-headline">
-            <h2>Коммерческие предложения</h2>
-            <p>Рабочий список КП с выбором строки, созданием нового предложения и быстрым переходом в детализацию.</p>
-          </div>
-          <div class="toolbar-actions">
-            <button class="toolbar-btn" data-action="resetQuoteListFilters" title="Сбросить все фильтры в таблице КП">
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M7 12h10"/><path d="M10 18h4"/></svg>
-              <span>Сбросить фильтры</span>
-            </button>
-            <button class="toolbar-btn toolbar-btn-primary" data-action="openNewQuoteModal" title="Создать новое коммерческое предложение">
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-              <span>Создать КП</span>
-            </button>
-          </div>
-        </div>
-        <div class="table-wrap quote-list-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>${renderQuoteListColumnHeader("КП", "quoteNumber", state.ui.activeQuoteListColumnFilter)}</th>
-                <th>${renderQuoteListColumnHeader("Дата", "quoteDate", state.ui.activeQuoteListColumnFilter)}</th>
-                <th>${renderQuoteListColumnHeader("Клиент", "client", state.ui.activeQuoteListColumnFilter)}</th>
-                <th>${renderQuoteListColumnHeader("Тема", "requestTitle", state.ui.activeQuoteListColumnFilter)}</th>
-                <th>${renderQuoteListColumnHeader("Менеджер", "manager", state.ui.activeQuoteListColumnFilter)}</th>
-                <th>Режим</th>
-                <th>${renderQuoteListColumnHeader("Позиции", "positions", state.ui.activeQuoteListColumnFilter)}</th>
-                <th>Сумма</th>
-                <th>Маржа %</th>
-                <th>${renderQuoteListColumnHeader("Статус", "status", state.ui.activeQuoteListColumnFilter)}</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>${renderQuotesTable(state)}</tbody>
-          </table>
-          ${renderQuoteListColumnMenu(state, state.ui.activeQuoteListColumnFilter)}
-        </div>
-      </article>
-      <article class="panel quote-items-panel">
-        <div class="panel-header quote-panel-header">
-          <div class="quote-panel-headline" style="display: flex; align-items: flex-start; gap: 8px;">
-            <div>
-              <h2 style="display: flex; align-items: center; gap: 8px;">
-                Позиции КП
-                <button class="ghost-btn icon-btn" style="padding: 4px; height: auto; min-width: 0; color: var(--muted);" data-action="openQuoteSettings" title="Настроить параметры КП (клиент, файлы запроса)">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-                </button>
-              </h2>
-              <p>
-                ${escapeHtml(currentQuoteRecord?.meta?.quoteNumber || meta.quoteNumber)} · ${escapeHtml(currentQuoteRecord?.meta?.requestTitle || "Выбранное коммерческое предложение")}
-              </p>
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;min-height:0;">
+        <article class="panel quote-list-panel">
+          <div class="panel-header quote-panel-header">
+            <div class="quote-panel-headline">
+              <h2>Коммерческие предложения</h2>
+              <p>Рабочий список КП.</p>
+            </div>
+            <div class="toolbar-actions">
+              <button class="toolbar-btn" data-action="resetQuoteListFilters" title="Сбросить фильтры">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M7 12h10"/><path d="M10 18h4"/></svg>
+                <span>Сбросить фильтры</span>
+              </button>
+              <button class="toolbar-btn toolbar-btn-primary" data-action="openNewQuoteModal" title="Создать новое КП">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                <span>Создать КП</span>
+              </button>
             </div>
           </div>
+          <div class="table-wrap quote-list-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>${renderQuoteListColumnHeader("КП", "quoteNumber", state.ui.activeQuoteListColumnFilter)}</th>
+                  <th>${renderQuoteListColumnHeader("Дата", "quoteDate", state.ui.activeQuoteListColumnFilter)}</th>
+                  <th>${renderQuoteListColumnHeader("Клиент", "client", state.ui.activeQuoteListColumnFilter)}</th>
+                  <th>${renderQuoteListColumnHeader("Тема", "requestTitle", state.ui.activeQuoteListColumnFilter)}</th>
+                  <th>${renderQuoteListColumnHeader("Менеджер", "manager", state.ui.activeQuoteListColumnFilter)}</th>
+                  <th>Режим</th>
+                  <th>${renderQuoteListColumnHeader("Позиции", "positions", state.ui.activeQuoteListColumnFilter)}</th>
+                  <th>Сумма</th>
+                  <th>Маржа %</th>
+                  <th>${renderQuoteListColumnHeader("Статус", "status", state.ui.activeQuoteListColumnFilter)}</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>${renderQuotesTable(state)}</tbody>
+            </table>
+            ${renderQuoteListColumnMenu(state, state.ui.activeQuoteListColumnFilter)}
+          </div>
+        </article>
+        ${renderQuoteFilesPanel(state)}
+      </div>
+
+      <article class="panel quote-items-panel" style="margin-top:16px;">
+        <div class="panel-header quote-panel-header">
+          <div class="quote-panel-headline">
+            <h2 style="display:flex;align-items:center;gap:8px;">
+              Позиции КП
+              <button class="ghost-btn icon-btn" style="padding:4px;height:auto;min-width:0;color:var(--muted);" data-action="openQuoteSettings" title="Настройки КП">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+              </button>
+            </h2>
+            <p>${escapeHtml(currentQuoteRecord?.meta?.quoteNumber || meta.quoteNumber)} · ${escapeHtml(currentQuoteRecord?.meta?.requestTitle || "Выбранное коммерческое предложение")}</p>
+          </div>
           <div class="toolbar-actions quote-actions">
-            <button class="toolbar-btn" data-action="goToReview" title="Вернуться в каталог и добавить новые позиции">
+            <div class="quote-markup-toolbar">
+              <span style="font-size:12px;color:var(--muted);white-space:nowrap;">Наценка:</span>
+              <button class="markup-btn" data-action="applyMarkupToSelectedItems" data-percent="10" title="+10% к закупке">+10%</button>
+              <button class="markup-btn" data-action="applyMarkupToSelectedItems" data-percent="20" title="+20% к закупке">+20%</button>
+              <button class="markup-btn" data-action="applyMarkupToSelectedItems" data-percent="30" title="+30% к закупке">+30%</button>
+              <button class="markup-btn markup-btn-custom" data-action="openCustomMarkupModal" title="Произвольный процент">+...%</button>
+            </div>
+            <div class="toolbar-divider"></div>
+            <button class="toolbar-btn" data-action="goToReview" title="Добавить позиции из обзора">
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
               <span>Добавить позицию</span>
             </button>
-            <button class="toolbar-btn" data-action="runQuoteAiProcessing" ${canRunAi ? "" : "disabled"} title="Запустить ИИ-подбор по прикрепленному файлу клиента">
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/><path d="M19 3v4"/><path d="M21 5h-4"/></svg>
-              <span>${aiStatus === "running" ? "Обработка ИИ..." : "Авто-подбор (ИИ)"}</span>
-            </button>
-            <button class="toolbar-btn toolbar-btn-primary" data-action="downloadQuoteExcel" title="Скачать готовое КП в Excel">
+            <button class="toolbar-btn toolbar-btn-primary" data-action="downloadQuoteExcel" title="Скачать КП в Excel">
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
               <span>Скачать Excel</span>
             </button>
           </div>
         </div>
         <div class="quote-alert-strip">
-          <span class="pill ${alerts.total ? "pill-warn" : "pill-good"}">
-            ${alerts.total ? `Есть рабочие замечания: ${alerts.total}` : "КП выглядит готовым к отправке"}
-          </span>
-          <span class="pill">${meta.mode === "internal" ? "Внутренний режим" : "Клиентский режим"}</span>
+          <span class="pill ${alerts.total ? "pill-warn" : "pill-good"}">${alerts.total ? `Замечания: ${alerts.total}` : "Готово к отправке"}</span>
+          <span class="pill">${meta.mode === "internal" ? "Внутренний" : "Клиентский"}</span>
           <span class="pill">${meta.clientName || "Клиент не выбран"}</span>
           <span class="pill">${summary.positions} ${pluralize(summary.positions, "позиция", "позиции", "позиций")}</span>
           <span class="pill">${formatMoney(summary.sale)}</span>
-          <span class="pill ${aiStatus === "ready" ? "pill-good" : aiStatus === "error" ? "pill-bad" : aiStatus === "running" || aiStatus === "queued" ? "pill-warn" : ""}">ИИ: ${escapeHtml(formatAiProcessingStatus(aiStatus))}</span>
-          ${alerts.missingRrc.length ? `<span class="pill pill-warn">без RRC: ${alerts.missingRrc.length}</span>` : ""}
-          ${alerts.missingSale.length ? `<span class="pill pill-bad">без цены продажи: ${alerts.missingSale.length}</span>` : ""}
-          ${alerts.negativeMargin.length ? `<span class="pill pill-bad">отрицательная маржа: ${alerts.negativeMargin.length}</span>` : ""}
-          ${
-            state.runtime?.dataSource === "local-api"
-              ? `<span class="pill">Черновик КП API: ${draftResource?.status || "idle"}</span>`
-              : ""
-          }
+          ${alerts.missingSale.length ? `<span class="pill pill-bad">без цены: ${alerts.missingSale.length}</span>` : ""}
+          ${alerts.negativeMargin.length ? `<span class="pill pill-bad">отриц. маржа: ${alerts.negativeMargin.length}</span>` : ""}
         </div>
-        ${
-          !hasRealWorkflowEndpoint
-            ? `<div class="hint quote-items-hint">Webhook для обработки ИИ пока не настроен. Укажите реальный http(s) endpoint для отправки файла на разбор.</div>`
-            : localQuoteFile
-              ? `<div class="hint quote-items-hint">К этому КП привязан локальный файл запроса. Bahus может сразу отправить его на внешнюю ИИ-обработку.</div>`
-              : ""
-        }
-        ${
-          meta.aiProcessingNote
-            ? `<div class="hint quote-items-hint">${escapeHtml(meta.aiProcessingNote)}</div>`
-            : ""
-        }
-        <div class="hint quote-items-hint">Для позиций КП сейчас важнее быстрые действия по строке и подбор аналогов. Полный слой фильтрации здесь пока не нужен и только перегрузит рабочий сценарий.</div>
         <div class="table-wrap">
           <table>
             ${renderQuoteColGroup(state)}
-            <thead>
-              <tr>${renderQuoteTableHeader(state)}</tr>
-            </thead>
+            <thead><tr>${renderQuoteTableHeader(state)}</tr></thead>
             <tbody>${renderQuoteTable(state)}</tbody>
           </table>
         </div>
       </article>
+
       ${renderQuotePreviewModal(state)}
+      ${renderLinkImportModal(state)}
+      ${renderCustomMarkupModal(state)}
     </section>
   `;
 }
+

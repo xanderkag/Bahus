@@ -148,5 +148,19 @@ export function createBackend(apiBaseUrl) {
         method: "POST"
       });
     },
+    listQuoteImports(quoteId) {
+      return fetchJson(`${apiBaseUrl}/quotes/${encodeURIComponent(quoteId)}/imports`);
+    },
+    linkImportToQuote(quoteId, importId) {
+      return fetchJson(`${apiBaseUrl}/quotes/${encodeURIComponent(quoteId)}/imports`, {
+        method: "POST",
+        body: JSON.stringify({ import_id: importId }),
+      });
+    },
+    unlinkImportFromQuote(quoteId, importId) {
+      return fetchJson(`${apiBaseUrl}/quotes/${encodeURIComponent(quoteId)}/imports/${encodeURIComponent(importId)}`, {
+        method: "DELETE",
+      });
+    },
   };
 }

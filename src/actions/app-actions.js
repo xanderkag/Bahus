@@ -456,6 +456,7 @@ export function createActions(store, backend = null) {
           managerName: record.meta?.managerName || "Александр",
           note: record.meta?.note || "",
           mode: record.meta?.mode || "internal",
+          linkedImportIds: record.meta?.linkedImportIds || [],
         },
       },
     };
@@ -2828,5 +2829,122 @@ export function createActions(store, backend = null) {
       });
     },
 
+    openLinkImportModal() {
+      update((state) => ({
+        ...state,
+        ui: { ...state.ui, modal: "link-import-to-quote" },
+      }));
+    },
+
+    async linkImportToQuote({ importId }) {
+      const state = store.getState();
+      const quoteId = state.ui.selectedQuoteId;
+      if (!quoteId || !importId) return;
+
+      // Optimistic update
+      update((s) => ({
+        ...s,
+        quote: {
+          ...s.quote,
+          meta: {
+            ...s.quote.meta,
+            linkedImportIds: [...new Set([...(s.quote.meta.linkedImportIds || []), importId])],
+          },
+        },
+        ui: { ...s.ui, modal: null },
+      }));
+
+      if (backend) {
+        try {
+          await backend.linkImportToQuote(quoteId, importId);
+        } catch (err) {
+          // Rollback on failure
+          update((s) => ({
+            ...s,
+            quote: {
+              ...s.quote,
+              meta: {
+                ...s.quote.meta,
+                linkedImportIds: (s.quote.meta.linkedImportIds || []).filter((id) => id !== importId),
+              },
+            },
+          }));
+        }
+      }
+    },
+
+    async unlinkImportFromQuote({ importId }) {
+      const state = store.getState();
+      const quoteId = state.ui.selectedQuoteId;
+      if (!quoteId || !importId) return;
+
+      // Optimistic update
+      update((s) => ({
+        ...s,
+        quote: {
+          ...s.quote,
+          meta: {
+            ...s.quote.meta,
+            linkedImportIds: (s.quote.meta.linkedImportIds || []).filter((id) => id !== importId),
+          },
+        },
+      }));
+
+      if (backend) {
+        try {
+          await backend.unlinkImportFromQuote(quoteId, importId);
+        } catch (err) {
+          // Rollback
+          update((s) => ({
+            ...s,
+            quote: {
+              ...s.quote,
+              meta: {
+                ...s.quote.meta,
+                linkedImportIds: [...new Set([...(s.quote.meta.linkedImportIds || []), importId])],
+              },
+            },
+          }));
+        }
+      }
+    },
+
+    applyMarkupToSelectedItems({ percent }) {
+      const pct = parseFloat(percent);
+      if (isNaN(pct) || pct <= 0) return;
+      const multiplier = 1 + pct / 100;
+      update((state) => {
+        const nextItemsById = { ...state.quote.itemsById };
+        // Apply to all items if none selected, otherwise only selected
+        const targetIds = state.ui.selectedRowIds?.length
+          ? state.ui.selectedRowIds
+          : state.quote.itemOrder;
+        targetIds.forEach((id) => {
+          const item = nextItemsById[id];
+          if (!item) return;
+          const base = typeof item.purchase_price === "number" ? item.purchase_price : 0;
+          nextItemsById[id] = { ...item, sale_price: Math.round(base * multiplier * 100) / 100 };
+        });
+        return { ...state, quote: { ...state.quote, itemsById: nextItemsById } };
+      });
+    },
+
+    openCustomMarkupModal() {
+      update((state) => ({
+        ...state,
+        ui: { ...state.ui, modal: "custom-markup" },
+      }));
+    },
+
+    applyCustomMarkup() {
+      const input = document.getElementById("custom-markup-input");
+      const percent = input ? parseFloat(input.value) : NaN;
+      if (isNaN(percent) || percent <= 0) return;
+      // Reuse applyMarkupToSelectedItems logic
+      store.dispatch("applyMarkupToSelectedItems", { percent });
+      update((state) => ({ ...state, ui: { ...state.ui, modal: null } }));
+    },
+
   };
 }
+

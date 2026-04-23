@@ -236,6 +236,8 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             return self.handle_get_quote(route.split("/")[3])
         if route.startswith("/api/quotes/") and route.endswith("/export/excel"):
             return self.handle_export_quote_excel(route.split("/")[3])
+        if route.startswith("/api/quotes/") and route.endswith("/imports"):
+            return self.handle_list_quote_imports(route.split("/")[3])
         if route == "/api/debug/jobs":
             return self.handle_debug_jobs()
 
@@ -337,6 +339,8 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
 
         if route == "/api/quotes":
             return self.handle_create_quote()
+        if route.startswith("/api/quotes/") and route.endswith("/imports"):
+            return self.handle_link_import_to_quote(route.split("/")[3])
 
         return self.respond_json({"error": "Not found", "path": route}, status=HTTPStatus.NOT_FOUND)
 
@@ -356,6 +360,10 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
 
         if route.startswith("/api/imports/") and len(route.split("/")) == 4:
             return self.handle_delete_import(route.split("/")[3])
+        # DELETE /api/quotes/:id/imports/:import_id
+        parts = route.split("/")
+        if route.startswith("/api/quotes/") and len(parts) == 6 and parts[4] == "imports":
+            return self.handle_unlink_import_from_quote(parts[3], parts[5])
 
         return self.respond_json({"error": "Not found", "path": route}, status=HTTPStatus.NOT_FOUND)
 
@@ -804,7 +812,159 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             order by ib.created_at desc nulls last, ib.import_date desc
             """
         ).fetchall()
-        return [self.serialize_import(conn, row) for row in batch_rows]
+        
+        if not batch_rows:
+            return []
+            
+        import_ids = [str(r["id"]) for r in batch_rows]
+        
+        # 1. Fetch all files for these batches
+        files_map = {b_id: [] for b_id in import_ids}
+        f_rows = conn.execute(
+            """
+            select 
+                import_batch_id,
+                id, file_name, original_name, mime_type, size_bytes, file_kind, note, 
+                processing_status, processing_pipeline, last_error, uploaded_at 
+            from import_file 
+            where import_batch_id = any(%s)
+            """,
+            (import_ids,)
+        ).fetchall()
+        for r in f_rows:
+            files_map[str(r["import_batch_id"])].append({
+                "id": str(r["id"]),
+                "file_name": r["file_name"],
+                "original_name": r["original_name"],
+                "mime_type": r["mime_type"],
+                "size_bytes": r["size_bytes"],
+                "file_kind": r["file_kind"],
+                "note": r["note"],
+                "processing_status": r["processing_status"],
+                "processing_pipeline": r["processing_pipeline"],
+                "last_error": r["last_error"],
+                "uploaded_at": r["uploaded_at"].isoformat() if r["uploaded_at"] else None,
+                "source_format": infer_source_format(r["original_name"], r["mime_type"]),
+            })
+            
+        # 2. Fetch all issues for these batches
+        issues_map = {b_id: [] for b_id in import_ids}
+        i_rows = conn.execute(
+            """
+            select 
+                ir.import_batch_id,
+                iri.id, iri.import_row_id, iri.severity, iri.field_name, iri.message, iri.raw_value, ir.row_index
+            from import_row_issue iri
+            join import_row ir on ir.id = iri.import_row_id
+            where ir.import_batch_id = any(%s)
+            order by ir.row_index asc, iri.created_at asc
+            """,
+            (import_ids,)
+        ).fetchall()
+        for r in i_rows:
+            issues_map[str(r["import_batch_id"])].append({
+                "id": str(r["id"]),
+                "import_row_id": str(r["import_row_id"]),
+                "severity": r["severity"],
+                "field": r["field_name"],
+                "message": r["message"],
+                "raw_value": r["raw_value"],
+                "row_index": r["row_index"],
+            })
+            
+        # 3. Fetch stats
+        stats_map = {b_id: {"cnt": 0, "checked_cnt": 0} for b_id in import_ids}
+        s_rows = conn.execute(
+            """
+            select 
+                import_batch_id,
+                count(*) as cnt,
+                count(case when review_status = 'checked' then 1 end) as checked_cnt
+            from import_row 
+            where import_batch_id = any(%s)
+            group by import_batch_id
+            """,
+            (import_ids,)
+        ).fetchall()
+        for r in s_rows:
+            stats_map[str(r["import_batch_id"])] = {"cnt": r["cnt"], "checked_cnt": r["checked_cnt"]}
+            
+        result = []
+        for batch_row in batch_rows:
+            import_id = str(batch_row["id"])
+            files = files_map[import_id]
+            stats = stats_map[import_id]
+            row_count = stats["cnt"]
+            checked_count = stats["checked_cnt"]
+            issues = issues_map[import_id]
+            
+            price_file = next((item for item in files if item["file_kind"] == "price"), files[0] if files else None)
+            attachments = [item for item in files if item["file_kind"] != "price"]
+
+            derived_status = batch_row["processing_status"] or batch_row["status"] or "uploaded"
+            if row_count > 0 and derived_status not in ("parsed", "partial"):
+                derived_status = "parsed"
+
+            result.append({
+                "id": import_id,
+                "supplier_id": str(batch_row["supplier_id"]),
+                "created_at": (
+                    batch_row["created_at"].replace(tzinfo=__import__('datetime').timezone.utc).isoformat()
+                    if "created_at" in batch_row and batch_row["created_at"]
+                    else None
+                ),
+                "meta": {
+                    "source_file": price_file["original_name"] if price_file else None,
+                    "source_format": price_file["source_format"] if price_file else None,
+                    "import_date": batch_row["import_date"].isoformat() if batch_row["import_date"] else None,
+                    "currency": batch_row["currency"],
+                    "document_type": batch_row["document_type"],
+                    "period": batch_row["period"],
+                    "sheet_name": batch_row["sheet_name"],
+                    "attachments": attachments,
+                    "manager_note": batch_row["manager_note"],
+                    "request_ref": batch_row["request_ref"],
+                    "request_title": batch_row["request_title"],
+                    "processing_started_at": batch_row["processing_started_at"].isoformat() if batch_row["processing_started_at"] else None,
+                    "processing_finished_at": batch_row["processing_finished_at"].isoformat() if batch_row["processing_finished_at"] else None,
+                    "last_webhook_at": batch_row["last_webhook_at"].isoformat() if batch_row["last_webhook_at"] else None,
+                },
+                "supplier": {
+                    "id": str(batch_row["supplier_id"]),
+                    "name": batch_row["supplier_name"],
+                    "contract_type": batch_row["contract_type"],
+                    "vat_included": batch_row["vat_included"],
+                },
+                "created_by": batch_row["created_by_email"],
+                "source": batch_row["source"],
+                "owner": batch_row["owner_email"],
+                "processing_status": derived_status,
+                "status": derived_status,
+                "row_count": row_count,
+                "checked_count": checked_count,
+                "errors": [
+                    {
+                        "row_index": issue["row_index"],
+                        "field": issue["field"],
+                        "message": issue["message"],
+                        "raw_value": issue["raw_value"],
+                    }
+                    for issue in issues
+                    if issue["severity"] == "error"
+                ],
+                "warnings": [
+                    {
+                        "row_index": issue["row_index"],
+                        "field": issue["field"],
+                        "message": issue["message"],
+                        "raw_value": issue["raw_value"],
+                    }
+                    for issue in issues
+                    if issue["severity"] != "error"
+                ],
+            })
+            
+        return result
 
     def handle_list_imports(self) -> None:
         with self.db() as conn:
@@ -2096,7 +2256,24 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
 
 
 
+    def _ensure_quote_import_link_table(self, conn) -> None:
+        """Auto-migrate: create quote_import_link if it doesn't exist."""
+        conn.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS quote_import_link (
+                quote_id  UUID NOT NULL REFERENCES quote_document(id) ON DELETE CASCADE,
+                import_id UUID NOT NULL REFERENCES import_batch(id) ON DELETE CASCADE,
+                linked_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                PRIMARY KEY (quote_id, import_id)
+            )
+            '''
+        )
+        conn.commit()
+
     def serialize_quote(self, conn, row) -> dict:
+        # Ensure migration is applied
+        self._ensure_quote_import_link_table(conn)
+
         items = conn.execute(
             '''
             select
@@ -2118,6 +2295,13 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
         for item in items:
             item["source_product_id"] = str(item["source_product_id"])
 
+        # Fetch linked import ids
+        link_rows = conn.execute(
+            "SELECT import_id FROM quote_import_link WHERE quote_id = %s",
+            (row["id"],),
+        ).fetchall()
+        linked_import_ids = [str(r["import_id"]) for r in link_rows]
+
         return {
             "id": str(row["id"]),
             "status": row["status"],
@@ -2129,9 +2313,101 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 "note": row["note"] or "",
                 "mode": row["mode"],
                 "aiProcessingStatus": "done",
+                "linkedImportIds": linked_import_ids,
             },
             "items": items,
         }
+
+    def handle_list_quote_imports(self, quote_id: str) -> None:
+        """GET /api/quotes/:id/imports — list import_batches linked to this quote."""
+        if not self.validate_uuid(quote_id):
+            return self.respond_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
+        with self.db() as conn:
+            self._ensure_quote_import_link_table(conn)
+            rows = conn.execute(
+                '''
+                SELECT
+                  ib.id,
+                  ib.status,
+                  ib.source,
+                  ib.document_type,
+                  ib.source_format,
+                  ib.currency,
+                  ib.import_date,
+                  ib.created_at,
+                  s.name AS supplier_name,
+                  COUNT(ir.id) AS row_count,
+                  COUNT(ir.id) FILTER (WHERE ir.review_status = 'checked') AS checked_count
+                FROM quote_import_link qil
+                JOIN import_batch ib ON ib.id = qil.import_id
+                LEFT JOIN supplier s ON s.id = ib.supplier_id
+                LEFT JOIN import_row ir ON ir.import_batch_id = ib.id AND NOT ir.excluded
+                WHERE qil.quote_id = %s
+                GROUP BY ib.id, ib.status, ib.source, ib.document_type, ib.source_format,
+                         ib.currency, ib.import_date, ib.created_at, s.name
+                ORDER BY qil.linked_at DESC
+                ''',
+                (quote_id,),
+            ).fetchall()
+        items = [
+            {
+                "id": str(r["id"]),
+                "status": r["status"],
+                "source": r["source"],
+                "document_type": r["document_type"],
+                "source_format": r["source_format"],
+                "currency": r["currency"],
+                "import_date": str(r["import_date"]) if r["import_date"] else None,
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                "supplier_name": r["supplier_name"],
+                "row_count": r["row_count"],
+                "checked_count": r["checked_count"],
+            }
+            for r in rows
+        ]
+        return self.respond_json({"items": items})
+
+    def handle_link_import_to_quote(self, quote_id: str) -> None:
+        """POST /api/quotes/:id/imports — link an existing import_batch to this quote."""
+        if not self.validate_uuid(quote_id):
+            return self.respond_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
+        body = self.read_json_body()
+        import_id = body.get("import_id", "")
+        if not self.validate_uuid(import_id):
+            return self.respond_json({"error": "import_id is required and must be a valid UUID"}, status=HTTPStatus.BAD_REQUEST)
+        with self.db() as conn:
+            self._ensure_quote_import_link_table(conn)
+            # Verify quote and import exist
+            quote_row = conn.execute("SELECT id FROM quote_document WHERE id = %s", (quote_id,)).fetchone()
+            if not quote_row:
+                return self.respond_json({"error": "Quote not found"}, status=HTTPStatus.NOT_FOUND)
+            import_row = conn.execute("SELECT id FROM import_batch WHERE id = %s", (import_id,)).fetchone()
+            if not import_row:
+                return self.respond_json({"error": "Import not found"}, status=HTTPStatus.NOT_FOUND)
+            # Upsert (ignore if already linked)
+            conn.execute(
+                """
+                INSERT INTO quote_import_link (quote_id, import_id)
+                VALUES (%s, %s)
+                ON CONFLICT (quote_id, import_id) DO NOTHING
+                """,
+                (quote_id, import_id),
+            )
+            conn.commit()
+        return self.respond_json({"ok": True, "quote_id": quote_id, "import_id": import_id})
+
+    def handle_unlink_import_from_quote(self, quote_id: str, import_id: str) -> None:
+        """DELETE /api/quotes/:id/imports/:import_id — unlink an import_batch from this quote."""
+        if not self.validate_uuid(quote_id) or not self.validate_uuid(import_id):
+            return self.respond_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
+        with self.db() as conn:
+            self._ensure_quote_import_link_table(conn)
+            conn.execute(
+                "DELETE FROM quote_import_link WHERE quote_id = %s AND import_id = %s",
+                (quote_id, import_id),
+            )
+            conn.commit()
+        return self.respond_json({"ok": True})
 
     def handle_list_quotes(self) -> None:
         with self.db() as conn:
