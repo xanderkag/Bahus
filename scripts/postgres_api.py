@@ -2485,9 +2485,8 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
     def handle_list_quotes(self) -> None:
         with self.db() as conn:
             rows = conn.execute(
-                '''
                 select
-                  id, client_id, quote_number, quote_date, mode, status, note
+                  id, client_id, quote_number, quote_date, mode, status, note, request_title
                 from quote_document
                 order by updated_at desc
                 limit 100
