@@ -1894,11 +1894,31 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                     ),
                 )
 
+            # ── Preserve review_status before replacing rows ──
+            # If user already confirmed rows, we must not lose that status
+            # when n8n re-sends results (e.g. re-process / retry).
+            existing_reviews = {}
+            existing_rows = conn.execute(
+                "SELECT row_index, review_status, excluded FROM import_row WHERE import_batch_id = %s",
+                (import_id,),
+            ).fetchall()
+            for er in existing_rows:
+                if er["review_status"] and er["review_status"] != "pending":
+                    existing_reviews[er["row_index"]] = {
+                        "review_status": er["review_status"],
+                        "excluded": er["excluded"],
+                    }
+
             conn.execute("delete from import_row where import_batch_id = %s", (import_id,))
 
             row_map = {}
             for index, row in enumerate(rows):
                 row_index = int(row.get("row_index", index + 1))
+                # Restore previous review state if available
+                prev_review = existing_reviews.get(row_index)
+                review_status = prev_review["review_status"] if prev_review else "pending"
+                excluded = prev_review["excluded"] if prev_review else False
+
                 inserted = conn.execute(
                     """
                     insert into import_row (
@@ -1914,10 +1934,12 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                       purchase_price,
                       rrc_min,
                       promo,
+                      review_status,
+                      excluded,
                       raw_payload
                     )
                     values (
-                      %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
+                      %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
                     )
                     returning id
                     """,
@@ -1934,6 +1956,8 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                         row.get("purchase_price"),
                         row.get("rrc_min") or row.get("sale_price"),
                         bool(row.get("promo", False)),
+                        review_status,
+                        excluded,
                         json.dumps(row, ensure_ascii=False, default=json_default),
                     ),
                 ).fetchone()
