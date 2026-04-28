@@ -2485,6 +2485,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
     def handle_list_quotes(self) -> None:
         with self.db() as conn:
             rows = conn.execute(
+                '''
                 select
                   id, client_id, quote_number, quote_date, mode, status, note, request_title
                 from quote_document
@@ -2840,10 +2841,10 @@ def main() -> None:
     openai_key_status = "SET (len=" + str(len(PostgresApiHandler.config.openai_api_key or "")) + ")" if PostgresApiHandler.config.openai_api_key else "NOT SET"
     logger.info(f"[CONFIG] OPENAI_API_KEY: {openai_key_status}")
 
-    # Run inline migration
+    # Run inline migration (non-blocking — server starts even if DB is down)
     try:
         import psycopg
-        with psycopg.connect(PostgresApiHandler.config.db_dsn) as conn:
+        with psycopg.connect(PostgresApiHandler.config.db_dsn, connect_timeout=5) as conn:
             conn.execute("ALTER TABLE import_file ADD COLUMN IF NOT EXISTS file_bytes BYTEA;")
             conn.execute("ALTER TABLE import_file ADD COLUMN IF NOT EXISTS cleanup_done BOOLEAN DEFAULT FALSE;")
             conn.execute("ALTER TABLE import_batch ADD COLUMN IF NOT EXISTS meta JSONB;")
@@ -2851,7 +2852,7 @@ def main() -> None:
             logger.info("Database schema check passed.")
 
     except Exception as e:
-        logger.error(f"Failed to run schema migration: {e}")
+        logger.error(f"Failed to run schema migration (will retry on first request): {e}")
 
     # Start the background cleanup thread
 
