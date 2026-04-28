@@ -13,6 +13,7 @@ import {
 } from "../state/selectors.js";
 import {
   escapeHtml,
+  formatImportStatus,
   formatMoney,
   formatNumber,
   formatPercent,
@@ -644,10 +645,7 @@ function getLinkedImports(allImports, linkedImportIds) {
   return allImports.filter((imp) => linkedImportIds.includes(imp.id));
 }
 
-function formatImportStatus(status) {
-  const labels = { done: "Готово", parsed: "Разобран", failed: "Ошибка", processing: "Обработка", pending: "Ожидание", queued: "Очередь" };
-  return labels[status] || status || "—";
-}
+
 
 function renderLinkImportModal(state) {
   if (state.ui.modal !== "link-import-to-quote") return "";

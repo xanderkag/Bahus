@@ -1622,8 +1622,8 @@ export function createActions(store, backend = null) {
         }, 0);
       }
     },
-    async deleteQuote(button) {
-      const quoteId = button.dataset.quoteId;
+    async deleteQuote(dataset) {
+      const quoteId = dataset.quoteId;
       if (!quoteId) return;
       if (!confirm("Вы уверены, что хотите удалить это КП? Это действие нельзя отменить.")) return;
 
@@ -2760,16 +2760,16 @@ export function createActions(store, backend = null) {
       const currentImportId = state.ui.selectedImportId;
       if (!currentImportId) return;
 
-      // Update local status optimistically or set a loading state
-      const importRecord = state.imports?.byId?.[currentImportId];
+      // Update local status optimistically
+      const importRecord = state.entities.importsById?.[currentImportId];
       if (importRecord) {
         update((s) => ({
           ...s,
-          imports: {
-            ...s.imports,
-            byId: {
-              ...s.imports.byId,
-              [currentImportId]: { ...importRecord, status: "queued", ai_processing_requested: true }
+          entities: {
+            ...s.entities,
+            importsById: {
+              ...s.entities.importsById,
+              [currentImportId]: { ...importRecord, status: "queued" }
             }
           }
         }));
@@ -2782,7 +2782,7 @@ export function createActions(store, backend = null) {
       .then(res => res.json())
       .then(() => {
         // Refresh imports to get updated status
-        store.actions.fetchImportsList();
+        store.actions.refreshRemoteData();
       })
       .catch(err => {
         console.error("Failed to trigger AI processing for import:", err);
@@ -3069,7 +3069,7 @@ export function createActions(store, backend = null) {
       const percent = input ? parseFloat(input.value) : NaN;
       if (isNaN(percent) || percent <= 0) return;
       // Reuse applyMarkupToSelectedItems logic
-      store.dispatch("applyMarkupToSelectedItems", { percent });
+      store.actions.applyMarkupToSelectedItems({ percent });
       if (input) input.value = "";
     },
 

@@ -48,8 +48,10 @@ export function pluralize(count, one, few, many) {
 
 const IMPORT_STATUS_LABELS = {
   success: "Готово",
+  done: "Готово",
   parsed: "Разобрано",
   partial: "Требует проверки",
+  processing: "В обработке",
   error: "Ошибка импорта",
   pending: "В обработке",
   queued: "В очереди",
@@ -66,8 +68,10 @@ export function formatImportStatus(status) {
 export function getImportStatusClass(status) {
   switch (status) {
     case "success":
+    case "done":
     case "parsed":   return "status-good";
     case "partial":
+    case "processing":
     case "pending":  return "status-warn";
     case "error":
     case "failed":   return "status-bad";
@@ -77,15 +81,29 @@ export function getImportStatusClass(status) {
 }
 
 const DOCUMENT_TYPE_LABELS = {
-  net_price:  "Нетто-прайс",
-  promo:      "Промо",
-  price_list: "Прайс-лист",
+  net_price:     "Нетто-прайс",
+  promo:         "Промо",
+  price_list:    "Прайс-лист",
   request_offer: "Под запрос",
+  stock_balance: "Остатки",
 };
 
 /** Localised label for import document_type values. */
 export function formatDocumentType(type) {
   return DOCUMENT_TYPE_LABELS[type] || formatValue(type);
+}
+
+const REVIEW_STATUS_LABELS = {
+  pending:  "Ждёт проверки",
+  checked:  "Проверено",
+  excluded: "Исключено",
+  approved: "Одобрено",
+  rejected: "Отклонено",
+};
+
+/** Localised label for product review_status values. */
+export function formatReviewStatus(status) {
+  return REVIEW_STATUS_LABELS[status] || formatValue(status);
 }
 
 /**

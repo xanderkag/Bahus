@@ -9,6 +9,7 @@ import {
   getRuntimeJobs,
   getSelectedProductDetail,
   getVisibleProducts,
+  normalizeText,
 } from "../state/selectors.js";
 import {
   escapeHtml,
@@ -18,6 +19,7 @@ import {
   formatMoney,
   formatNumber,
   formatPercent,
+  formatReviewStatus,
   formatValue,
   getImportStatusClass,
 } from "../utils/format.js";
@@ -566,14 +568,7 @@ function renderProductsTable(state) {
     .join("");
 }
 
-function formatReviewStatus(status) {
-  const labels = {
-    pending: "Ждёт проверки",
-    checked: "Проверено",
-    excluded: "Исключено",
-  };
-  return labels[status] || formatValue(status);
-}
+
 
 function getDetailPhotos(product) {
   const customImages = product.image_url ? [{ url: product.image_url, title: "Фото из сети", caption: "Найдено автоматически" }] : [];

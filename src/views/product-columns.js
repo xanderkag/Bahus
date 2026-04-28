@@ -1,25 +1,4 @@
-import { escapeHtml, formatNumber, formatMoney, formatPercent } from "../utils/format.js";
-
-export function formatDocumentType(type) {
-  const labels = {
-    net_price: "Нетто-прайс",
-    promo: "Промо",
-    price_list: "Прайс-лист",
-    stock_balance: "Остатки"
-  };
-  return labels[type] || type || "—";
-}
-
-export function formatReviewStatus(status) {
-  const labels = {
-    approved: "Одобрено",
-    rejected: "Отклонено",
-    pending: "Ожидает",
-    checked: "Проверено",
-    excluded: "Исключено"
-  };
-  return labels[status] || status;
-}
+import { escapeHtml, formatNumber, formatMoney, formatPercent, formatDocumentType, formatReviewStatus } from "../utils/format.js";
 
 export const PRODUCT_COLUMN_DEFS = {
   "import": {
