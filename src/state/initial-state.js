@@ -138,6 +138,8 @@ export function createInitialState(payload = {}, options = {}) {
       source: item.source,
       status: item.status,
       meta: item.meta,
+      row_count: item.row_count || 0,
+      checked_count: item.checked_count || 0,
       product_ids: productIds,
       issue_ids: issueIds,
     };

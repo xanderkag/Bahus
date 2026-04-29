@@ -90,6 +90,7 @@ function mapApiImportToEntity(item) {
     source: item.source,
     status: item.processing_status || item.status || "uploaded",
     row_count: item.row_count ?? 0,
+    checked_count: item.checked_count ?? 0,
     meta: item.meta || {},
     product_ids: Array.isArray(item.product_ids) ? item.product_ids : [],
     issue_ids: Array.isArray(item.issue_ids) ? item.issue_ids : [],
@@ -222,6 +223,7 @@ export function createActions(store, backend = null) {
                 ...currentImport,
                 status: status.processing_status || status.status || currentImport.status,
                 row_count: status.row_count ?? currentImport.row_count ?? 0,
+                checked_count: status.checked_count ?? currentImport.checked_count ?? 0,
                 meta: {
                   ...currentImport.meta,
                   processing_started_at: status.processing_started_at || null,
