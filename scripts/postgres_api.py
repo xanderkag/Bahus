@@ -1427,13 +1427,24 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
 
         def _bg_extract():
             try:
-                extract_mode, pdf_payload = self._analyze_pdf(file_bytes, filename)
-                n8n_logger.info(f"[AI] dispatch import={import_id} file={filename} mode={extract_mode}")
-
-                if extract_mode == "text" and len(pdf_payload) > _CHUNK_CHARS:
-                    rows = self._chunked_text_extract(api_key, pdf_payload, filename, import_id, _CHUNK_CHARS)
+                suffix = Path(filename).suffix.lower()
+                if suffix in (".xlsx", ".xls", ".csv"):
+                    extract_mode, text_payload = self._extract_excel_as_text(file_bytes, filename)
+                    n8n_logger.info(
+                        f"[AI] dispatch import={import_id} file={filename} "
+                        f"mode=excel→text chars={len(text_payload)}"
+                    )
+                    if len(text_payload) > _CHUNK_CHARS:
+                        rows = self._chunked_text_extract(api_key, text_payload, filename, import_id, _CHUNK_CHARS)
+                    else:
+                        rows = self._chat_completions_extract(api_key, extract_mode, text_payload, filename, import_id)
                 else:
-                    rows = self._chat_completions_extract(api_key, extract_mode, pdf_payload, filename, import_id)
+                    extract_mode, pdf_payload = self._analyze_pdf(file_bytes, filename)
+                    n8n_logger.info(f"[AI] dispatch import={import_id} file={filename} mode={extract_mode}")
+                    if extract_mode == "text" and len(pdf_payload) > _CHUNK_CHARS:
+                        rows = self._chunked_text_extract(api_key, pdf_payload, filename, import_id, _CHUNK_CHARS)
+                    else:
+                        rows = self._chat_completions_extract(api_key, extract_mode, pdf_payload, filename, import_id)
 
                 status = "parsed" if rows else "failed"
                 error = None if rows else "No rows extracted"
@@ -1498,6 +1509,50 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
             
         doc.close()
         return "vision", images_b64
+
+    # ── Excel / CSV Extraction ────────────────────────────────────────────────
+
+    def _extract_excel_as_text(self, file_bytes: bytes, filename: str) -> tuple[str, str]:
+        """Convert Excel or CSV file to a tab-separated text for GPT extraction.
+
+        Returns ('text', text_content) — same shape as _analyze_pdf text mode.
+        Supports .xlsx, .xlsm (via openpyxl) and .csv (raw decode).
+        Falls back to a best-effort string decode for .xls (old binary format).
+        """
+        import io
+        suffix = Path(filename).suffix.lower()
+
+        if suffix == ".csv":
+            for enc in ("utf-8-sig", "utf-8", "cp1251", "latin-1"):
+                try:
+                    return "text", file_bytes.decode(enc)
+                except UnicodeDecodeError:
+                    continue
+            return "text", file_bytes.decode("latin-1", errors="replace")
+
+        if suffix == ".xls":
+            # Old binary format — openpyxl can't open it.
+            # Best-effort: extract printable ASCII from raw bytes and send as text.
+            import re as _re
+            raw = file_bytes.decode("latin-1", errors="replace")
+            printable = _re.sub(r"[^\x20-\x7E\n\tЀ-ӿ]", " ", raw)
+            printable = _re.sub(r" {4,}", "  ", printable)
+            n8n_logger.warning(f"[AI] .xls binary decode (best-effort) for {filename}")
+            return "text", printable[:120_000]
+
+        # .xlsx / .xlsm
+        import openpyxl
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
+        lines: list[str] = []
+        for sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            lines.append(f"=== Sheet: {sheet_name} ===")
+            for row in ws.iter_rows(values_only=True):
+                cells = [str(c) if c is not None else "" for c in row]
+                if any(c.strip() for c in cells):
+                    lines.append("\t".join(cells))
+        wb.close()
+        return "text", "\n".join(lines)
 
     # ── Chat Completions Extraction ───────────────────────────────────────────
 
@@ -2485,6 +2540,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
     def handle_list_quotes(self) -> None:
         with self.db() as conn:
             rows = conn.execute(
+                '''
                 select
                   id, client_id, quote_number, quote_date, mode, status, note, request_title
                 from quote_document
