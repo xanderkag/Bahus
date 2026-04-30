@@ -344,11 +344,12 @@ function renderUploadFilesModal(state) {
               </select>
             </div>
             <div class="form-stack">
-              <label class="field-label">Категория прайса</label>
+              <label class="field-label">Тип документа</label>
               <select class="input" data-change="setUploadDraftField" data-field="documentType">
-                <option value="price_list" ${draft.documentType === "price_list" ? "selected" : ""}>Общий прайс</option>
-                <option value="promo" ${draft.documentType === "promo" ? "selected" : ""}>Акция / promo</option>
-                <option value="request_offer" ${draft.documentType === "request_offer" ? "selected" : ""}>Под конкретный запрос</option>
+                <option value="price_list" ${draft.documentType === "price_list" ? "selected" : ""}>Прайс-лист</option>
+                <option value="net_price" ${draft.documentType === "net_price" ? "selected" : ""}>Нетто-прайс</option>
+                <option value="promo" ${draft.documentType === "promo" ? "selected" : ""}>Промо</option>
+                <option value="request_offer" ${draft.documentType === "request_offer" ? "selected" : ""}>Под запрос</option>
               </select>
             </div>
           </div>

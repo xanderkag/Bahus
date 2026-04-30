@@ -1427,13 +1427,24 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
 
         def _bg_extract():
             try:
-                extract_mode, pdf_payload = self._analyze_pdf(file_bytes, filename)
-                n8n_logger.info(f"[AI] dispatch import={import_id} file={filename} mode={extract_mode}")
-
-                if extract_mode == "text" and len(pdf_payload) > _CHUNK_CHARS:
-                    rows = self._chunked_text_extract(api_key, pdf_payload, filename, import_id, _CHUNK_CHARS)
+                suffix = Path(filename).suffix.lower()
+                if suffix in {".xlsx", ".xlsm", ".xls", ".csv"}:
+                    # Excel/CSV → extract as structured text → GPT-4o text-mode
+                    excel_text = self._extract_excel_as_text(file_bytes, filename)
+                    extract_mode = "text"
+                    n8n_logger.info(f"[AI] dispatch import={import_id} file={filename} mode=excel_text chars={len(excel_text)}")
+                    if len(excel_text) > _CHUNK_CHARS:
+                        rows = self._chunked_text_extract(api_key, excel_text, filename, import_id, _CHUNK_CHARS)
+                    else:
+                        rows = self._chat_completions_extract(api_key, "text", excel_text, filename, import_id)
                 else:
-                    rows = self._chat_completions_extract(api_key, extract_mode, pdf_payload, filename, import_id)
+                    # PDF / images → existing PyMuPDF pipeline
+                    extract_mode, pdf_payload = self._analyze_pdf(file_bytes, filename)
+                    n8n_logger.info(f"[AI] dispatch import={import_id} file={filename} mode={extract_mode}")
+                    if extract_mode == "text" and len(pdf_payload) > _CHUNK_CHARS:
+                        rows = self._chunked_text_extract(api_key, pdf_payload, filename, import_id, _CHUNK_CHARS)
+                    else:
+                        rows = self._chat_completions_extract(api_key, extract_mode, pdf_payload, filename, import_id)
 
                 status = "parsed" if rows else "failed"
                 error = None if rows else "No rows extracted"
@@ -1444,6 +1455,104 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
 
         threading.Thread(target=_bg_extract, daemon=True, name=f"ai-extract-{import_id[:8]}").start()
         return {"import_id": import_id, "job_id": job_id, "status": "processing", "extract_mode": "analyzing"}
+
+    # ── Excel / CSV → Text Extraction ──────────────────────────────────────────
+
+    def _extract_excel_as_text(self, file_bytes: bytes, filename: str) -> str:
+        """Convert Excel / CSV bytes to structured plain-text for GPT extraction.
+
+        Supported formats:
+            .xlsx / .xlsm  — openpyxl → row-by-row text
+            .csv           — charset detection (utf-8 → cp1251 → latin-1) → raw text
+            .xls           — best-effort ASCII decode (quality lower, but won't crash)
+
+        Returns a single string ready to be sent to GPT-4o in text mode.
+        """
+        suffix = Path(filename).suffix.lower()
+
+        if suffix in {".xlsx", ".xlsm"}:
+            return self._xlsx_to_text(file_bytes, filename)
+        elif suffix == ".csv":
+            return self._csv_to_text(file_bytes, filename)
+        elif suffix == ".xls":
+            return self._xls_to_text(file_bytes, filename)
+        else:
+            raise ValueError(f"Unsupported Excel format: {suffix}")
+
+    def _xlsx_to_text(self, file_bytes: bytes, filename: str) -> str:
+        """Parse .xlsx/.xlsm via openpyxl and render as structured text."""
+        if openpyxl is None:
+            raise ImportError("openpyxl is required for .xlsx processing")
+
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+        parts: list[str] = []
+        for sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            sheet_lines: list[str] = [f"=== Sheet: {sheet_name} ==="]
+            for row in ws.iter_rows(values_only=True):
+                cell_values = [str(c) if c is not None else "" for c in row]
+                # Skip completely empty rows
+                if not any(v.strip() for v in cell_values):
+                    continue
+                sheet_lines.append(" | ".join(cell_values))
+            parts.append("\n".join(sheet_lines))
+        sheet_count = len(wb.sheetnames)
+        wb.close()
+
+        full_text = "\n\n".join(parts)
+        n8n_logger.info(f"[AI] xlsx_to_text file={filename} sheets={sheet_count} chars={len(full_text)}")
+        return full_text
+
+    def _csv_to_text(self, file_bytes: bytes, filename: str) -> str:
+        """Decode .csv with charset detection and return as plain text."""
+        text = None
+        for encoding in ("utf-8", "cp1251", "latin-1"):
+            try:
+                text = file_bytes.decode(encoding)
+                break
+            except (UnicodeDecodeError, ValueError):
+                continue
+        if text is None:
+            text = file_bytes.decode("utf-8", errors="replace")
+
+        n8n_logger.info(f"[AI] csv_to_text file={filename} chars={len(text)}")
+        return text
+
+    def _xls_to_text(self, file_bytes: bytes, filename: str) -> str:
+        """Best-effort extraction from legacy .xls binary format.
+
+        Without xlrd we do an ASCII-safe decode, stripping binary noise.
+        Quality is lower but at least it doesn't crash.
+        """
+        try:
+            # Try xlrd if available
+            import xlrd
+            wb = xlrd.open_workbook(file_contents=file_bytes)
+            parts: list[str] = []
+            for sheet in wb.sheets():
+                sheet_lines: list[str] = [f"=== Sheet: {sheet.name} ==="]
+                for rx in range(sheet.nrows):
+                    cell_values = [str(sheet.cell_value(rx, cx)) for cx in range(sheet.ncols)]
+                    if not any(v.strip() for v in cell_values):
+                        continue
+                    sheet_lines.append(" | ".join(cell_values))
+                parts.append("\n".join(sheet_lines))
+            full_text = "\n\n".join(parts)
+            n8n_logger.info(f"[AI] xls_to_text(xlrd) file={filename} sheets={len(wb.sheets())} chars={len(full_text)}")
+            return full_text
+        except ImportError:
+            pass
+
+        # Fallback: brute-force ASCII decode
+        n8n_logger.warning(f"[AI] xls_to_text file={filename} falling back to ASCII decode (xlrd not installed)")
+        # Extract printable ASCII sequences from binary .xls
+        import re
+        raw = file_bytes.decode("latin-1", errors="replace")
+        # Keep runs of printable characters (min 4 chars) separated by whitespace
+        fragments = re.findall(r'[\x20-\x7E\u0400-\u04FF]{4,}', raw)
+        text = "\n".join(fragments)
+        n8n_logger.info(f"[AI] xls_to_text(ascii) file={filename} fragments={len(fragments)} chars={len(text)}")
+        return text
 
     # ── PDF Analysis ──────────────────────────────────────────────────────────
 
