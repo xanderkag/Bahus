@@ -2908,7 +2908,8 @@ export function createActions(store, backend = null) {
       }
 
       try {
-        const response = await fetch(`/api/quotes/${quoteId}/export/excel`);
+        const apiBaseUrl = store.getState().runtime?.apiBaseUrl || backend?.apiBaseUrl || "";
+        const response = await fetch(`${apiBaseUrl}/api/quotes/${quoteId}/export/excel`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
@@ -2921,6 +2922,16 @@ export function createActions(store, backend = null) {
         URL.revokeObjectURL(url);
       } catch (err) {
         console.error("Excel export failed", err);
+        update((s) => ({
+          ...s,
+          ui: {
+            ...s.ui,
+            modal: "processing",
+            processingMessage: { title: "Ошибка экспорта", text: `Не удалось сформировать файл: ${err.message}` },
+          },
+        }));
+        setTimeout(() => update((s) => ({ ...s, ui: { ...s.ui, modal: null, processingMessage: null } })), 3000);
+        return;
       } finally {
         update((s) => ({ ...s, ui: { ...s.ui, modal: null, processingMessage: null } }));
       }
