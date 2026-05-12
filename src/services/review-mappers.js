@@ -1,9 +1,12 @@
 import { createProductKey } from "../state/initial-state.js";
 
 export function mapApiProductToEntity(product) {
+  // Backend returns import_batch_id; frontend uses import_id everywhere
+  const import_id = product.import_id || product.import_batch_id;
   return {
     ...product,
-    id: createProductKey(product.import_id, product),
+    import_id,
+    id: createProductKey(import_id, product),
     review_status: product.review_status || "pending",
     excluded: Boolean(product.excluded),
     manual_match_id: product.manual_match_id || null,
