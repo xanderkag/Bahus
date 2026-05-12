@@ -173,11 +173,7 @@ export function renderItems(state) {
     if (selectedCountries.size && !selectedCountries.has(product.country)) return false;
     if (selectedCategories.size && !selectedCategories.has(product.category)) return false;
     
-    if (selectedReview.size === 0) {
-      if (product.review_status !== "checked") return false;
-    } else {
-      if (!selectedReview.has(product.review_status)) return false;
-    }
+    if (selectedReview.size && !selectedReview.has(product.review_status)) return false;
 
     const issues = getIssuesForProduct(state, product.id);
     const hasErrors = issues.some((issue) => issue.severity === "error");
