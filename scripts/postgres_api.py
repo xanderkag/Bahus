@@ -713,6 +713,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 "processing_started_at": batch_row["processing_started_at"],
                 "processing_finished_at": batch_row["processing_finished_at"],
                 "last_webhook_at": batch_row["last_webhook_at"],
+                "last_error": price_file["last_error"] if price_file else (batch_row.get("meta") or {}).get("last_error"),
             },
             "supplier": {
                 "id": str(batch_row["supplier_id"]),
@@ -1447,14 +1448,35 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                         rows = self._chat_completions_extract(api_key, extract_mode, pdf_payload, filename, import_id)
 
                 status = "parsed" if rows else "failed"
-                error = None if rows else "No rows extracted"
+                error = None if rows else "ИИ не смог извлечь строки из файла. Попробуйте другой формат или файл."
             except Exception:
                 n8n_logger.error(f"[AI] extraction error import={import_id}\n{traceback.format_exc()}")
-                rows, status, error = [], "failed", traceback.format_exc().splitlines()[-1]
+                raw_error = traceback.format_exc().splitlines()[-1]
+                error = self._humanize_extraction_error(raw_error)
+                rows, status = [], "failed"
             self._save_extraction_result(import_id, job_id, file_id_db, rows, status, error)
 
         threading.Thread(target=_bg_extract, daemon=True, name=f"ai-extract-{import_id[:8]}").start()
         return {"import_id": import_id, "job_id": job_id, "status": "processing", "extract_mode": "analyzing"}
+
+    @staticmethod
+    def _humanize_extraction_error(raw_error: str) -> str:
+        """Translate technical extraction errors into user-friendly Russian messages."""
+        low = raw_error.lower()
+        if "insufficient_quota" in low or "exceeded your current quota" in low:
+            return "Квота OpenAI исчерпана. Пополните баланс на platform.openai.com или замените API-ключ."
+        if "rate_limit" in low or "429" in low:
+            return "Превышен лимит запросов к OpenAI. Подождите минуту и попробуйте снова."
+        if "timeout" in low or "timed out" in low:
+            return "Превышено время ожидания ответа от ИИ. Попробуйте повторить позже."
+        if "invalid_api_key" in low or "401" in low:
+            return "Неверный API-ключ OpenAI. Проверьте настройки в переменных окружения."
+        if "context_length" in low or "too many tokens" in low:
+            return "Файл слишком большой для обработки ИИ. Попробуйте разбить на части."
+        if "connection" in low or "network" in low:
+            return "Ошибка сети при подключении к OpenAI. Проверьте подключение и повторите."
+        # Fallback: show truncated technical error
+        return f"Ошибка обработки: {raw_error[:200]}"
 
     # ── Excel / CSV → Text Extraction ──────────────────────────────────────────
 
@@ -1864,7 +1886,7 @@ class PostgresApiHandler(BaseHTTPRequestHandler):
                 update import_batch
                 set status=%s, processing_status=%s,
                     processing_finished_at=now(), last_webhook_at=now(), updated_at=now(),
-                    meta = jsonb_set(coalesce(meta, '{}'::jsonb), '{error}', %s::jsonb)
+                    meta = jsonb_set(coalesce(meta, '{}'::jsonb), '{last_error}', %s::jsonb)
                 where id=%s
                 """,
                 (status, status, json.dumps(error or ""), import_id),
